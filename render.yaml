@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: ocr-validation
+    env: docker
+    build:
+      dockerfile: Dockerfile
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.13
+      - key: PORT
+        value: 10000
+      - key: FLASK_ENV
+        value: production
+      - key: TESSDATA_PREFIX
+        value: /usr/share/tesseract-ocr/4.00/tessdata/
+    plan: free
+    numInstances: 1
+    healthCheckPath: /health
+    autoDeploy: yes
+    buildCommand: |
+      ./build.sh
+    startCommand: |
+      ./start.sh

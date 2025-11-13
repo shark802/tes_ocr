@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OCR Document Verification</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .drop-zone {
+            border: 2px dashed #4a90e2;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .drop-zone:hover {
+            border-color: #2c5282;
+            background-color: #f7fafc;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+    <div class="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-8">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-8">OCR Document Verification</h1>
+        
+        <form id="uploadForm" class="space-y-6">
+            <div class="space-y-4">
+                <div class="space-y-4">
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Enter Name to Verify</label>
+                        <input type="text" id="name" name="name" required 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Enter the name to verify">
+                    </div>
+                    <div>
+                        <label for="id_number" class="block text-sm font-medium text-gray-700 mb-1">Enter ID Number (Optional)</label>
+                        <input type="text" id="id_number" name="id_number"
+                               class="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="Enter ID number to verify">
+                    </div>
+                
+                <div id="dropZone" class="drop-zone">
+                    <input type="file" id="fileInput" class="hidden" accept="image/*">
+                    <div class="space-y-2">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                        <p class="text-gray-600">Click to upload or drag and drop an image</p>
+                        <p class="text-sm text-gray-500">PNG, JPG, GIF up to 10MB</p>
+                    </div>
+                </div>
+                <div id="fileName" class="text-sm text-gray-600"></div>
+            </div>
+            
+            <div class="text-center">
+                <button type="submit" 
+                        class="px-6 py-3 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors">
+                    Verify Name in Document
+                </button>
+            </div>
+        </form>
+        
+        <div id="result" class="mt-8 hidden">
+            <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+                <div class="px-4 py-5 sm:px-6 bg-gray-50">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">Verification Results</h3>
+                </div>
+                <div class="border-t border-gray-200">
+                    <dl>
+                        <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                            <dt class="text-sm font-medium text-gray-500">Name Verification</dt>
+                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                <span id="verificationStatus" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium">
+                                    <span id="verificationText">Pending</span>
+                                    <span id="verificationIcon" class="ml-1"></span>
+                                </span>
+                            </dd>
+                        </div>
+                        <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                            <dt class="text-sm font-medium text-gray-500">ID Verification</dt>
+                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                <span id="idVerificationStatus" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium">
+                                    <span id="idVerificationText">Not provided</span>
+                                    <span id="idVerificationIcon" class="ml-1"></span>
+                                </span>
+                            </dd>
+                        </div>
+                        <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                            <dt class="text-sm font-medium text-gray-500">Extracted Text</dt>
+                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                <div id="extractedText" class="p-3 bg-gray-50 border border-gray-200 rounded-md max-h-48 overflow-y-auto"></div>
+                            </dd>
+                        </div>
+                        <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                            <dt class="text-sm font-medium text-gray-500">Uploaded Image</dt>
+                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                <div id="imageContainer" class="max-w-full h-auto border rounded-md overflow-hidden"></div>
+                            </dd>
+                        </div>
+                    </dl>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileName = document.getElementById('fileName');
+        const uploadForm = document.getElementById('uploadForm');
+        const resultDiv = document.getElementById('result');
+        const extractedText = document.getElementById('extractedText');
+        const nameResult = document.getElementById('nameResult');
+        const idResult = document.getElementById('idResult');
+        const imagePreview = document.getElementById('imagePreview');
+
+        // Handle drag and drop
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight() {
+            dropZone.classList.add('border-blue-500', 'bg-blue-50');
+        }
+
+        function unhighlight() {
+            dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+        }
+
+        // Handle dropped files
+        dropZone.addEventListener('drop', handleDrop, false);
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        fileInput.addEventListener('change', function() {
+            handleFiles(this.files);
+        });
+
+        function handleFiles(files) {
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.type.startsWith('image/')) {
+                    fileName.textContent = `Selected file: ${file.name}`;
+                    fileInput.files = files;
+                } else {
+                    alert('Please upload an image file (PNG, JPG, GIF)');
+                }
+            }
+        }
+
+        // Update verification status display
+        function updateVerificationStatus(type, isVerified, isOptional = false) {
+            const statusElement = document.getElementById(`${type}VerificationStatus`);
+            const textElement = document.getElementById(`${type}VerificationText`);
+            const iconElement = document.getElementById(`${type}VerificationIcon`);
+            
+            // Check if elements exist before trying to update them
+            if (!statusElement || !textElement || !iconElement) {
+                console.warn(`Verification elements for ${type} not found`);
+                return;
+            }
+            
+            try {
+                if (isOptional && !isVerified) {
+                    // For optional fields that weren't provided
+                    statusElement.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800';
+                    textElement.textContent = 'Not provided';
+                    iconElement.innerHTML = '';
+                } else if (isVerified) {
+                    statusElement.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800';
+                    textElement.textContent = type === 'name' ? 'Name verified in document' : 'ID verified in document';
+                    iconElement.innerHTML = '✓';
+                } else {
+                    statusElement.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800';
+                    textElement.textContent = type === 'name' ? 'Name not found in document' : 'ID not found in document';
+                    iconElement.innerHTML = '✗';
+                }
+            } catch (error) {
+                console.error('Error updating verification status:', error);
+            }
+        }
+        
+        // Check if name exists in text with improved flexibility
+        function isNameInText(name, text) {
+            if (!name || !text) return false;
+            
+            // Clean and normalize both strings
+            const cleanName = name.toLowerCase().trim().replace(/[^\w\s]/g, '');
+            const cleanText = text.toLowerCase().replace(/[^\w\s]/g, ' ');
+            
+            // Check for exact match first
+            if (cleanText.includes(cleanName)) {
+                return true;
+            }
+            
+            // Split name into meaningful parts (ignore single letters and common words)
+            const nameParts = cleanName.split(/\s+/).filter(part => 
+                part.length > 1 && 
+                !['jr', 'sr', 'ii', 'iii', 'iv', 'v', 'of', 'the', 'and'].includes(part)
+            );
+            
+            // If we have multiple name parts, try different combinations
+            if (nameParts.length > 1) {
+                // Try first name + last name
+                const firstLast = `${nameParts[0]} ${nameParts[nameParts.length - 1]}`;
+                if (cleanText.includes(firstLast)) return true;
+                
+                // Try first name + middle initial + last name
+                if (nameParts.length > 2) {
+                    const firstMiddleLast = `${nameParts[0]} ${nameParts[1].charAt(0)} ${nameParts[2]}`;
+                    if (cleanText.includes(firstMiddleLast.replace(/\s+/g, ' '))) return true;
+                }
+                
+                // Check if most name parts exist in the text
+                const matchingParts = nameParts.filter(part => {
+                    // Check for exact matches or partial matches for longer words
+                    if (part.length > 3) {
+                        return cleanText.includes(part) || 
+                               cleanText.split(/\s+/).some(word => word.startsWith(part) || word.endsWith(part));
+                    }
+                    return cleanText.includes(part);
+                });
+                
+                // If at least 60% of name parts match, consider it a match
+                const matchThreshold = Math.max(2, Math.floor(nameParts.length * 0.6));
+                if (matchingParts.length >= matchThreshold) {
+                    return true;
+                }
+            }
+            
+            // Try removing middle names/initials and check again
+            if (nameParts.length > 2) {
+                const simpleName = `${nameParts[0]} ${nameParts[nameParts.length - 1]}`;
+                if (cleanText.includes(simpleName)) return true;
+            }
+            
+            return false;
+        }
+        
+        // Check if ID exists in text
+        function isIdInText(id, text) {
+            if (!id || !text) return false;
+            
+            // Clean and normalize both strings
+            const cleanId = id.replace(/[^\d]/g, ''); // Remove all non-digits
+            const cleanText = text.replace(/[^\d]/g, ' '); // Replace non-digits with spaces
+            
+            // Check for exact match in the cleaned text
+            if (cleanText.includes(cleanId)) {
+                return true;
+            }
+            
+            // For longer IDs, check if parts of it exist in the text
+            if (cleanId.length > 5) {
+                // Try first 6 digits if ID is long enough
+                const firstPart = cleanId.substring(0, 6);
+                if (cleanText.includes(firstPart)) return true;
+                
+                // Try last 6 digits
+                const lastPart = cleanId.slice(-6);
+                if (cleanText.includes(lastPart)) return true;
+            }
+            
+            return false;
+        }
+        
+        // Initialize verification elements
+        function initializeVerificationElements() {
+            const resultDiv = document.getElementById('result');
+            if (!resultDiv) return;
+            
+            // Make sure the result div is visible
+            resultDiv.classList.remove('hidden');
+            
+            // Initialize verification status elements if they don't exist
+            const verificationSections = [
+                { type: 'name', label: 'Name Verification' },
+                { type: 'id', label: 'ID Verification' }
+            ];
+            
+            verificationSections.forEach(section => {
+                const statusId = `${section.type}VerificationStatus`;
+                if (!document.getElementById(statusId)) {
+                    const dlElement = document.querySelector('dl');
+                    if (dlElement) {
+                        const sectionDiv = document.createElement('div');
+                        sectionDiv.className = 'bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6';
+                        sectionDiv.innerHTML = `
+                            <dt class="text-sm font-medium text-gray-500">${section.label}</dt>
+                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                <span id="${statusId}" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium">
+                                    <span id="${section.type}VerificationText">Pending</span>
+                                    <span id="${section.type}VerificationIcon" class="ml-1"></span>
+                                </span>
+                            </dd>
+                        `;
+                        dlElement.prepend(sectionDiv);
+                    }
+                }
+            });
+        }
+        
+        // Handle form submission
+        uploadForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('name')?.value.trim() || '';
+            const idNumber = document.getElementById('id_number')?.value.trim() || '';
+            
+            if (!name) {
+                alert('Please enter a name to verify');
+                return;
+            }
+            
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('Please select an image file');
+                return;
+            }
+            
+            // Show loading state
+            const submitButton = uploadForm.querySelector('button[type="submit"]');
+            const originalButtonText = submitButton.innerHTML;
+            submitButton.disabled = true;
+            submitButton.innerHTML = 'Processing...';
+            
+            // Initialize and show verification elements
+            initializeVerificationElements();
+            
+            // Reset verification statuses
+            updateVerificationStatus('name', false);
+            updateVerificationStatus('id', false, true);
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('name', name);
+            if (idNumber) {
+                formData.append('id_number', idNumber);
+            }
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Show results
+                    resultDiv.classList.remove('hidden');
+                    
+                    // Display extracted text with preserved line breaks
+                    const textWithLineBreaks = data.text.replace(/\n/g, '<br>');
+                    extractedText.innerHTML = textWithLineBreaks || 'No text could be extracted';
+                    
+                    // Update verification statuses
+                    updateVerificationStatus('name', data.name_found);
+                    if (idNumber) {
+                        updateVerificationStatus('id', data.id_found || false);
+                    } else {
+                        updateVerificationStatus('id', false, true);
+                    }
+                    
+                    // Show image preview
+                    const imageContainer = document.getElementById('imageContainer');
+                    imageContainer.innerHTML = ''; // Clear previous image
+                    if (data.image_url) {
+                        const img = document.createElement('img');
+                        img.src = data.image_url;
+                        img.alt = 'Uploaded document';
+                        img.className = 'max-w-full h-auto';
+                        imageContainer.appendChild(img);
+                    }
+                    
+                    // Scroll to results
+                    resultDiv.scrollIntoView({ behavior: 'smooth' });
+                } else {
+                    alert(`Error: ${data.error || 'Failed to process the document'}`);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('An error occurred while processing your request');
+            } finally {
+                // Reset button state
+                submitButton.disabled = false;
+                submitButton.innerHTML = originalButtonText;
+            }
+        });
+    </script>
+</body>
+</html>

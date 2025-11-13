@@ -1,0 +1,13 @@
+=== Test started at 11/13/2025 14:18:23 ===
+
+=== Running Unit Tests ===
+=== Starting OCR Validation Tests ===  Running unit tests... [2025-11-13 14:18:27] Unit Test - Single Verification: ERROR - HTTPConnectionPool(host='localhost', port=10000): Max retries exceeded with url: /api/verify_student (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000022DEF286E40>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it')) (Response Time: 4.11s)  === Test Complete === Results saved to: C:\Users\User1\Desktop\OCR_SYSTEM\ocr_validation\test_results.txt
+
+=== Unit Tests completed in 4.57 seconds ===
+
+=== Checking Server Status ===
+ERROR: Could not connect to server. Make sure the server is running on port 10000
+
+=== Test Summary ===
+Results saved to: C:\Users\User1\Desktop\OCR_SYSTEM\ocr_validation\test_results\test_results_2025-11-13_14-18-23.txt
+Test completed at: 11/13/2025 14:18:32

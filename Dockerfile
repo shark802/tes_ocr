@@ -1,0 +1,63 @@
+# Use the official Python 3.9 image with Debian Bullseye for better compatibility and security
+FROM python:3.9-slim-bullseye
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    FLASK_APP=app.py \
+    FLASK_ENV=production \
+    PYTHONPATH=/app \
+    TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata/ \
+    PATH="$PATH:/usr/bin/tesseract"
+
+# Set the working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    gcc \
+    python3-dev \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /usr/share/tesseract-ocr/4.00/tessdata/ \
+    && ln -s /usr/share/tesseract-ocr/tessdata /usr/share/tesseract-ocr/4.00/tessdata \
+    && tesseract --list-langs
+
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy the rest of the application
+COPY . .
+
+# Create necessary directories and set permissions
+RUN mkdir -p static/uploads && \
+    chmod -R 755 static/ && \
+    chmod +x start.sh
+
+# Expose the port the app runs on
+EXPOSE 10000
+
+# Health check with queue status
+HEALTHCHECK --interval=30s --timeout=30s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:10000/health || exit 1
+
+# Install additional Python packages for testing and monitoring
+RUN pip install --no-cache-dir \
+    pytest \
+    pytest-cov \
+    gunicorn \
+    gevent
+
+# Set environment variables for Gunicorn
+ENV GUNICORN_CMD_ARGS="--workers=5 --worker-class=gevent --worker-connections=1000 --timeout=120 --bind=0.0.0.0:10000"
+
+# Command to run the application with Gunicorn
+CMD ["gunicorn", "app:app"]

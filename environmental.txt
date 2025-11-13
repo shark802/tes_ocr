@@ -1,0 +1,10 @@
+FLASK_APP=app.py
+FLASK_ENV=production
+MAX_CONTENT_LENGTH=16777216
+PORT=10000
+PYTHONDONTWRITEBYTECODE=1
+PYTHONUNBUFFERED=1
+SECRET_KEY=your-secret-key-here
+TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
+TESSERACT_CMD=/usr/bin/tesseract
+UPLOAD_FOLDER=static/uploads
