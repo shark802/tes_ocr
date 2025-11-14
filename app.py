@@ -11,13 +11,25 @@ import re
 import cv2
 import numpy as np
 
-# Set Tesseract command path - works both in Docker and local development
-try:
-    # This will work in the Docker container
-    pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
-except Exception:
-    # Fallback for local development if Tesseract is in PATH
-    pytesseract.pytesseract.tesseract_cmd = 'tesseract'
+# Set Tesseract command path - check multiple possible locations
+tesseract_paths = [
+    '/usr/bin/tesseract',  # Common Linux path
+    '/usr/local/bin/tesseract',  # Another common path
+    '/app/.apt/usr/bin/tesseract',  # Heroku's buildpack path
+    'tesseract'  # Fallback to PATH
+]
+
+for path in tesseract_paths:
+    try:
+        pytesseract.pytesseract.tesseract_cmd = path
+        # Test if the path works
+        pytesseract.get_tesseract_version()
+        print(f"Tesseract found at: {path}")
+        break
+    except (pytesseract.TesseractNotFoundError, Exception) as e:
+        print(f"Tesseract not found at {path}: {str(e)}")
+else:
+    raise EnvironmentError('Tesseract not found in any of the expected locations. Please ensure Tesseract is installed.')
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'

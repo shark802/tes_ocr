@@ -8,7 +8,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     FLASK_ENV=production \
     PYTHONPATH=/app \
     TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata/ \
-    PATH="$PATH:/usr/bin/tesseract"
+    PATH="/usr/local/bin/tesseract:${PATH}" \
+    TESSERACT_VERSION=4.1.1
 
 # Set the working directory
 WORKDIR /app
@@ -17,6 +18,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-eng \
+    tesseract-ocr-all \
+    libleptonica-dev \
+    libtesseract-dev \
     gcc \
     python3-dev \
     libgl1-mesa-glx \
@@ -25,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /usr/share/tesseract-ocr/4.00/tessdata/ \
     && ln -s /usr/share/tesseract-ocr/tessdata /usr/share/tesseract-ocr/4.00/tessdata \
+    && tesseract --version \
     && tesseract --list-langs
 
 # Copy requirements first to leverage Docker cache

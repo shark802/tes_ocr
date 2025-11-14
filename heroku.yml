@@ -1,0 +1,10 @@
+build:
+  docker:
+    web: Dockerfile
+  config:
+    TESSDATA_PREFIX: /usr/share/tesseract-ocr/4.00/tessdata/
+    FLASK_ENV: production
+    PYTHONUNBUFFERED: 'true'
+
+run:
+  command: gunicorn --workers 4 --bind 0.0.0.0:$PORT --timeout 120 app:app
