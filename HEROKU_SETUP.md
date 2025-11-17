@@ -6,17 +6,38 @@ The apt buildpack **must** run before the Python buildpack to install Tesseract.
 
 ### Option 1: Using Heroku CLI (Recommended)
 
+**First, set up the Heroku remote (if not already done):**
+
 ```bash
-# Clear existing buildpacks
-heroku buildpacks:clear
+# If you know your app name (replace tesocr with your actual app name)
+heroku git:remote -a tesocr
+
+# OR if you don't know the app name, list your apps:
+heroku apps
+```
+
+**Then configure buildpacks:**
+
+```bash
+# Clear existing buildpacks (use --app flag if remote not set)
+heroku buildpacks:clear --app tesocr
 
 # Add apt buildpack FIRST (this installs Tesseract)
-heroku buildpacks:add https://github.com/heroku/heroku-buildpack-apt
+heroku buildpacks:add https://github.com/heroku/heroku-buildpack-apt --app tesocr
 
 # Add Python buildpack SECOND
-heroku buildpacks:add heroku/python
+heroku buildpacks:add heroku/python --app tesocr
 
 # Verify buildpacks are set correctly
+heroku buildpacks --app tesocr
+```
+
+**Or if you've set up the git remote, you can omit --app:**
+
+```bash
+heroku buildpacks:clear
+heroku buildpacks:add https://github.com/heroku/heroku-buildpack-apt
+heroku buildpacks:add heroku/python
 heroku buildpacks
 ```
 
