@@ -1,6 +1,8 @@
 import os
+import sys
 import time
 import queue
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, render_template, request, jsonify, Response
@@ -11,25 +13,46 @@ import re
 import cv2
 import numpy as np
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Set Tesseract command path - check multiple possible locations
 tesseract_paths = [
     '/usr/bin/tesseract',  # Common Linux path
     '/usr/local/bin/tesseract',  # Another common path
     '/app/.apt/usr/bin/tesseract',  # Heroku's buildpack path
+    '/app/vendor/tesseract-ocr/bin/tesseract',  # Heroku buildpack path
     'tesseract'  # Fallback to PATH
 ]
 
+tesseract_found = False
 for path in tesseract_paths:
     try:
         pytesseract.pytesseract.tesseract_cmd = path
         # Test if the path works
-        pytesseract.get_tesseract_version()
-        print(f"Tesseract found at: {path}")
+        version = pytesseract.get_tesseract_version()
+        logger.info(f"Tesseract {version} found at: {path}")
+        # Set TESSDATA_PREFIX if not set
+        if 'TESSDATA_PREFIX' not in os.environ:
+            if path == '/usr/bin/tesseract':
+                os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.0.0/tessdata'
+            elif path == '/app/.apt/usr/bin/tesseract':
+                os.environ['TESSDATA_PREFIX'] = '/app/.apt/usr/share/tesseract-ocr/4.0.0/tessdata'
+            elif path == '/app/vendor/tesseract-ocr/bin/tesseract':
+                os.environ['TESSDATA_PREFIX'] = '/app/vendor/tesseract-ocr/share/tessdata'
+        logger.info(f"Using TESSDATA_PREFIX: {os.environ.get('TESSDATA_PREFIX', 'Not set')}")
+        tesseract_found = True
         break
-    except (pytesseract.TesseractNotFoundError, Exception) as e:
-        print(f"Tesseract not found at {path}: {str(e)}")
-else:
-    raise EnvironmentError('Tesseract not found in any of the expected locations. Please ensure Tesseract is installed.')
+    except Exception as e:
+        logger.warning(f"Tesseract not found at {path}: {str(e)}")
+
+if not tesseract_found:
+    error_msg = 'Tesseract not found in any of the expected locations. Tried paths: ' + ', '.join(tesseract_paths)
+    logger.error(error_msg)
+    # Don't crash immediately, let the app start and fail on first OCR request
+    # This allows the health check to pass
+    pytesseract.pytesseract.tesseract_cmd = 'tesseract'  # Fallback
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
