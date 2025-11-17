@@ -95,13 +95,16 @@ if not os.environ.get('TESSDATA_PREFIX'):
 # Verify Tesseract is accessible after app creation
 def verify_tesseract():
     """Verify Tesseract is accessible and log diagnostics"""
+    current_cmd = pytesseract.pytesseract.tesseract_cmd
+    
     try:
         version = pytesseract.get_tesseract_version()
-        app.logger.info(f"✓ Tesseract found at: {tesseract_cmd}, version: {version}")
+        app.logger.info(f"✓ Tesseract found at: {current_cmd}, version: {version}")
         app.logger.info(f"  TESSDATA_PREFIX: {os.environ.get('TESSDATA_PREFIX', 'Not set')}")
         return True
     except pytesseract.TesseractNotFoundError as e:
-        app.logger.error(f"✗ Tesseract not found at {tesseract_cmd}")
+        app.logger.error(f"✗ Tesseract not found")
+        app.logger.error(f"  Current CMD: {current_cmd}")
         app.logger.error(f"  Error: {str(e)}")
         app.logger.error(f"  PATH: {os.environ.get('PATH', 'Not set')}")
         app.logger.error(f"  TESSERACT_CMD: {os.environ.get('TESSERACT_CMD', 'Not set')}")
@@ -112,35 +115,58 @@ def verify_tesseract():
             result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True, timeout=2)
             if result.returncode == 0:
                 found_path = result.stdout.strip()
-                app.logger.error(f"  'which tesseract' found: {found_path}")
-                if found_path and found_path != tesseract_cmd:
+                app.logger.warning(f"  'which tesseract' found: {found_path}")
+                if found_path and found_path != current_cmd:
                     app.logger.warning(f"  Attempting to use {found_path}")
                     pytesseract.pytesseract.tesseract_cmd = found_path
                     try:
                         version = pytesseract.get_tesseract_version()
                         app.logger.info(f"✓ Successfully switched to: {found_path}, version: {version}")
                         return True
+                    except Exception as retry_error:
+                        app.logger.error(f"  Failed to use {found_path}: {retry_error}")
+        except Exception as find_error:
+            app.logger.debug(f"  'which' command failed: {find_error}")
+        
+        # Try filesystem search
+        try:
+            result = subprocess.run(['find', '/usr', '/app', '-name', 'tesseract', '-type', 'f', '-executable'], 
+                                  capture_output=True, text=True, timeout=5)
+            if result.returncode == 0 and result.stdout.strip():
+                found_paths = result.stdout.strip().split('\n')
+                app.logger.warning(f"  Found tesseract executables: {found_paths[:3]}")
+                for found_path in found_paths[:3]:
+                    try:
+                        pytesseract.pytesseract.tesseract_cmd = found_path
+                        version = pytesseract.get_tesseract_version()
+                        app.logger.info(f"✓ Successfully using: {found_path}, version: {version}")
+                        return True
                     except:
-                        pass
-        except:
-            pass
+                        continue
+        except Exception as find_error:
+            app.logger.debug(f"  'find' command failed: {find_error}")
         
-        # Check if file exists
-        if os.path.exists(tesseract_cmd):
-            app.logger.error(f"  File exists at {tesseract_cmd} but may not be executable")
+        # Check if file exists (only if current_cmd is not None)
+        if current_cmd and os.path.exists(current_cmd):
+            app.logger.error(f"  File exists at {current_cmd} but may not be executable")
             import stat
-            file_stat = os.stat(tesseract_cmd)
+            file_stat = os.stat(current_cmd)
             app.logger.error(f"  File permissions: {oct(file_stat.st_mode)}")
-        else:
-            app.logger.error(f"  File does not exist: {tesseract_cmd}")
+        elif current_cmd:
+            app.logger.error(f"  File does not exist: {current_cmd}")
         
+        app.logger.warning("  Tesseract will not be available. OCR features will fail.")
         return False
     except Exception as e:
-        app.logger.error(f"✗ Unexpected error verifying Tesseract: {str(e)}")
+        app.logger.error(f"✗ Unexpected error verifying Tesseract: {str(e)}", exc_info=True)
         return False
 
-# Verify on startup
-verify_tesseract()
+# Verify on startup (don't crash if not found)
+try:
+    verify_tesseract()
+except Exception as e:
+    import logging
+    logging.error(f"Error during Tesseract verification: {e}", exc_info=True)
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB max file size
 
