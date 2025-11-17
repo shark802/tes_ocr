@@ -193,19 +193,36 @@ def verify_student():
         ]
         
         all_text = []
+        tesseract_found = False
+        
         for config in configs:
             try:
                 current_text = pytesseract.image_to_string(image, config=config)
                 if current_text.strip():
                     all_text.append(current_text.strip())
+                    tesseract_found = True
             except pytesseract.TesseractNotFoundError:
-                app.logger.error(f"Tesseract not found. CMD: {pytesseract.pytesseract.tesseract_cmd}")
-                return jsonify({
-                    'success': False,
-                    'error': 'Tesseract OCR is not installed or not found in PATH. Please check the server configuration.',
-                    'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
-                    'path': os.environ.get('PATH', 'Not set')
-                }), 500
+                app.logger.warning(f"Tesseract not found at {pytesseract.pytesseract.tesseract_cmd}, attempting re-detection...")
+                # Try to re-detect Tesseract at runtime
+                if verify_tesseract():
+                    app.logger.info(f"Tesseract re-detected, retrying OCR...")
+                    try:
+                        current_text = pytesseract.image_to_string(image, config=config)
+                        if current_text.strip():
+                            all_text.append(current_text.strip())
+                            tesseract_found = True
+                    except Exception as retry_error:
+                        app.logger.error(f"OCR still failed after re-detection: {str(retry_error)}")
+                else:
+                    app.logger.error(f"Tesseract re-detection failed. CMD: {pytesseract.pytesseract.tesseract_cmd}")
+                    # Only return error if this is the first config and we haven't found any text yet
+                    if not all_text and config == configs[0]:
+                        return jsonify({
+                            'success': False,
+                            'error': 'Tesseract OCR is not installed or not found in PATH. Please check the server configuration.',
+                            'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
+                            'path': os.environ.get('PATH', 'Not set')
+                        }), 500
             except pytesseract.TesseractError as e:
                 app.logger.error(f"Tesseract error: {str(e)}")
                 # Continue with other configs if one fails
@@ -314,6 +331,47 @@ def health_check():
         'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
         'path': os.environ.get('PATH', 'Not set')
     }), 200
+
+@app.route('/debug/tesseract')
+def debug_tesseract():
+    """Debug endpoint to check Tesseract installation"""
+    import subprocess
+    diagnostics = {
+        'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
+        'path': os.environ.get('PATH', 'Not set'),
+        'tesseract_env': os.environ.get('TESSERACT_CMD', 'Not set'),
+        'tessdata_prefix': os.environ.get('TESSDATA_PREFIX', 'Not set'),
+        'file_exists': os.path.exists(pytesseract.pytesseract.tesseract_cmd) if pytesseract.pytesseract.tesseract_cmd else False,
+        'is_executable': os.access(pytesseract.pytesseract.tesseract_cmd, os.X_OK) if pytesseract.pytesseract.tesseract_cmd and os.path.exists(pytesseract.pytesseract.tesseract_cmd) else False,
+    }
+    
+    # Try to find tesseract using which
+    try:
+        result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True, timeout=2)
+        diagnostics['which_tesseract'] = result.stdout.strip() if result.returncode == 0 else 'Not found'
+    except:
+        diagnostics['which_tesseract'] = 'Error running which'
+    
+    # Try to find tesseract using find
+    try:
+        result = subprocess.run(['find', '/usr', '-name', 'tesseract', '-type', 'f'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            diagnostics['find_tesseract'] = result.stdout.strip().split('\n')[:5]  # First 5 results
+        else:
+            diagnostics['find_tesseract'] = 'Not found'
+    except:
+        diagnostics['find_tesseract'] = 'Error running find'
+    
+    # Try to get version
+    try:
+        version = pytesseract.get_tesseract_version()
+        diagnostics['version'] = version
+        diagnostics['available'] = True
+    except Exception as e:
+        diagnostics['version'] = f'Error: {str(e)}'
+        diagnostics['available'] = False
+    
+    return jsonify(diagnostics), 200
 
 def is_tesseract_available():
     """Check if Tesseract is available"""
@@ -467,18 +525,35 @@ def upload_file():
         ]
         
         all_text = []
+        tesseract_found = False
+        
         for config in configs:
             try:
                 current_text = pytesseract.image_to_string(image, config=config)
                 if current_text.strip():
                     all_text.append(current_text.strip())
+                    tesseract_found = True
             except pytesseract.TesseractNotFoundError:
-                app.logger.error(f"Tesseract not found. CMD: {pytesseract.pytesseract.tesseract_cmd}")
-                return jsonify({
-                    'error': 'Tesseract OCR is not installed or not found in PATH. Please check the server configuration.',
-                    'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
-                    'path': os.environ.get('PATH', 'Not set')
-                }), 500
+                app.logger.warning(f"Tesseract not found at {pytesseract.pytesseract.tesseract_cmd}, attempting re-detection...")
+                # Try to re-detect Tesseract at runtime
+                if verify_tesseract():
+                    app.logger.info(f"Tesseract re-detected, retrying OCR...")
+                    try:
+                        current_text = pytesseract.image_to_string(image, config=config)
+                        if current_text.strip():
+                            all_text.append(current_text.strip())
+                            tesseract_found = True
+                    except Exception as retry_error:
+                        app.logger.error(f"OCR still failed after re-detection: {str(retry_error)}")
+                else:
+                    app.logger.error(f"Tesseract re-detection failed. CMD: {pytesseract.pytesseract.tesseract_cmd}")
+                    # Only return error if this is the first config and we haven't found any text yet
+                    if not all_text and config == configs[0]:
+                        return jsonify({
+                            'error': 'Tesseract OCR is not installed or not found in PATH. Please check the server configuration.',
+                            'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
+                            'path': os.environ.get('PATH', 'Not set')
+                        }), 500
             except pytesseract.TesseractError as e:
                 app.logger.error(f"Tesseract error: {str(e)}")
                 # Continue with other configs if one fails

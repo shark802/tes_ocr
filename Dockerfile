@@ -15,27 +15,36 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    gcc \
-    python3-dev \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        gcc \
+        python3-dev \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /usr/share/tesseract-ocr/4.00/tessdata/ \
-    && ln -s /usr/share/tesseract-ocr/tessdata /usr/share/tesseract-ocr/4.00/tessdata \
-    && echo "Verifying Tesseract installation..." \
-    && ls -la /usr/bin/tesseract* || echo "Warning: No tesseract in /usr/bin" \
-    && which tesseract || echo "Warning: tesseract not in PATH" \
-    && find /usr -name tesseract -type f 2>/dev/null | head -5 || echo "Warning: tesseract not found in /usr" \
-    && tesseract --version \
-    && tesseract --list-langs \
-    && echo "Tesseract installation verified successfully" \
-    && echo "Creating symlinks to ensure accessibility..." \
-    && (ln -sf $(which tesseract) /usr/local/bin/tesseract 2>/dev/null || true) \
-    && (ln -sf $(which tesseract) /usr/bin/tesseract 2>/dev/null || true) \
-    && echo "Final verification..." \
-    && /usr/bin/tesseract --version || $(which tesseract) --version
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify Tesseract installation and set up paths
+RUN echo "Verifying Tesseract installation..." && \
+    TESSERACT_PATH=$(which tesseract) && \
+    if [ -z "$TESSERACT_PATH" ]; then \
+        echo "ERROR: Tesseract not found after installation!" && \
+        find /usr -name "*tesseract*" -type f 2>/dev/null | head -10 && \
+        exit 1; \
+    fi && \
+    echo "Tesseract found at: $TESSERACT_PATH" && \
+    $TESSERACT_PATH --version && \
+    $TESSERACT_PATH --list-langs && \
+    mkdir -p /usr/share/tesseract-ocr/4.00/tessdata/ && \
+    if [ -d /usr/share/tesseract-ocr/tessdata ]; then \
+        ln -sf /usr/share/tesseract-ocr/tessdata /usr/share/tesseract-ocr/4.00/tessdata; \
+    fi && \
+    echo "Creating symlinks..." && \
+    ln -sf "$TESSERACT_PATH" /usr/local/bin/tesseract && \
+    ln -sf "$TESSERACT_PATH" /usr/bin/tesseract && \
+    echo "Final verification..." && \
+    /usr/bin/tesseract --version && \
+    echo "Tesseract installation verified successfully"
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
