@@ -162,11 +162,20 @@ def verify_tesseract():
         return False
 
 # Verify on startup (don't crash if not found)
-try:
-    verify_tesseract()
-except Exception as e:
-    import logging
-    logging.error(f"Error during Tesseract verification: {e}", exc_info=True)
+# Delay verification until after app is fully initialized
+def init_tesseract():
+    """Initialize Tesseract verification - called after app is ready"""
+    try:
+        verify_tesseract()
+    except Exception as e:
+        # Use basic logging if app.logger isn't available yet
+        try:
+            app.logger.error(f"Error during Tesseract verification: {e}", exc_info=True)
+        except:
+            import logging
+            logging.error(f"Error during Tesseract verification: {e}", exc_info=True)
+
+# Don't verify immediately - will be called after app starts
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB max file size
 
@@ -376,15 +385,26 @@ def index():
 @app.route('/health')
 def health_check():
     """Health check endpoint for load balancers and monitoring"""
+    # Initialize Tesseract on first health check
+    if not hasattr(app, '_tesseract_initialized'):
+        try:
+            init_tesseract()
+            app._tesseract_initialized = True
+        except:
+            pass
+    
     # Try to re-verify Tesseract if not available
     if not is_tesseract_available():
         app.logger.warning("Tesseract not available, attempting to re-detect...")
-        verify_tesseract()
+        try:
+            verify_tesseract()
+        except:
+            pass
     
     return jsonify({
         'status': 'healthy',
         'tesseract': 'available' if is_tesseract_available() else 'unavailable',
-        'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
+        'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd or 'Not found',
         'path': os.environ.get('PATH', 'Not set')
     }), 200
 
