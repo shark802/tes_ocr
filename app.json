@@ -1,0 +1,30 @@
+{
+  "name": "OCR Document Verification",
+  "description": "A Flask-based web application that verifies names and IDs in uploaded documents using OCR",
+  "repository": "https://github.com/yourusername/ocr-validation",
+  "logo": "https://via.placeholder.com/150",
+  "keywords": ["flask", "ocr", "tesseract", "document-verification"],
+  "stack": "container",
+  "env": {
+    "FLASK_ENV": {
+      "value": "production"
+    },
+    "PYTHON_VERSION": {
+      "value": "3.9.13"
+    },
+    "TESSDATA_PREFIX": {
+      "value": "/usr/share/tesseract-ocr/4.00/tessdata/"
+    },
+    "TESSERACT_CMD": {
+      "value": "/usr/bin/tesseract"
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "buildpacks": []
+}
+

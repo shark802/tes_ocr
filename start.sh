@@ -1,38 +1,29 @@
 #!/bin/bash
-set -e
+set -e  # Exit on error
 
-# Set environment variables
-export PYTHONUNBUFFERED=1
-export PYTHONPATH=/app
-
-# Debug information
-echo "=== System Information ==="
-uname -a
-python --version
-pip --version
-
-# Check Tesseract
-echo "=== Tesseract Check ==="
-which tesseract || echo "Tesseract not found in PATH"
-tesseract --version || echo "Could not get Tesseract version"
+# Set TESSDATA_PREFIX if not set
+export TESSDATA_PREFIX=${TESSDATA_PREFIX:-/usr/share/tesseract-ocr/4.00/tessdata/}
 
 # Create necessary directories
-echo "=== Setting up directories ==="
-mkdir -p /app/static/uploads
-chmod -R 755 /app/static/
+mkdir -p $TESSDATA_PREFIX
 
-# Install Python dependencies
-echo "=== Installing dependencies ==="
-pip install -r requirements.txt
+# Verify Tesseract installation
+echo "Verifying Tesseract installation..."
+tesseract --version || echo "Tesseract not found, installation may be required"
 
-# Start Gunicorn with more verbose logging
-echo "=== Starting Gunicorn ==="
-exec gunicorn --bind 0.0.0.0:$PORT wsgi:application \
-    --workers 2 \
-    --worker-class sync \
-    --timeout 120 \
+# Set Python path
+export PYTHONPATH=$PYTHONPATH:$(pwd)
+
+# Run Gunicorn with increased timeout and better logging
+echo "Starting Gunicorn server..."
+exec gunicorn \
+    --bind 0.0.0.0:$PORT \
+    --timeout 3000 \
+    --workers 1 \
+    --worker-class gthread \
+    --threads 4 \
     --log-level debug \
     --access-logfile - \
     --error-logfile - \
-    --capture-output \
-    --enable-stdio-inheritance
+    --preload \
+    wsgi:app

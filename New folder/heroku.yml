@@ -1,0 +1,19 @@
+build:
+  docker:
+    web: Dockerfile
+  config:
+    TESSERACT_CMD: /usr/bin/tesseract
+    TESSDATA_PREFIX: /usr/share/tesseract-ocr/4.00/tessdata
+    LD_LIBRARY_PATH: /usr/local/lib:/usr/lib/x86_64-linux-gnu:/usr/lib
+    PATH: /usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+deploy:
+  web:
+    docker:
+      target: prod
+      dockerfile: Dockerfile/
+    FLASK_ENV: production
+    PYTHONUNBUFFERED: 'true'
+
+run:
+  command: gunicorn --workers 4 --bind 0.0.0.0:$PORT --timeout 120 app:app

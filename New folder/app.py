@@ -1,6 +1,12 @@
 import os
-import shutil
-from flask import Flask, render_template, request, jsonify
+import sys
+import time
+import queue
+import logging
+import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from flask import Flask, render_template, request, jsonify, Response
 from werkzeug.utils import secure_filename
 import pytesseract
 from PIL import Image, ImageEnhance, ImageFilter
@@ -8,22 +14,245 @@ import re
 import cv2
 import numpy as np
 
-# Set Tesseract command path - works in Docker, Heroku, and local development
-tesseract_cmd = os.environ.get('TESSERACT_CMD', '/usr/bin/tesseract')
-# Check if the path exists, or try to find tesseract in PATH
-if not (os.path.exists(tesseract_cmd) and os.access(tesseract_cmd, os.X_OK)):
-    # Try to find tesseract in PATH
-    tesseract_path = shutil.which('tesseract')
-    if tesseract_path:
-        tesseract_cmd = tesseract_path
-    else:
-        # Fallback to default (will work if tesseract is in PATH)
-        tesseract_cmd = 'tesseract'
-pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Set up Tesseract paths
+tesseract_paths = [
+    '/usr/bin/tesseract',
+    '/usr/local/bin/tesseract',
+    '/app/.apt/usr/bin/tesseract',
+    'tesseract'  # Last resort, will use PATH
+]
+
+# Try to find Tesseract
+found_tesseract = False
+for path in tesseract_paths:
+    if os.path.isfile(path) or shutil.which(path):
+        pytesseract.pytesseract.tesseract_cmd = path
+        found_tesseract = True
+        logger.info(f"Using Tesseract at: {path}")
+        break
+
+if not found_tesseract:
+    logger.warning("Tesseract not found in standard locations. Will try to use from PATH.")
+    pytesseract.pytesseract.tesseract_cmd = 'tesseract'
+
+# Set TESSDATA_PREFIX
+tessdata_paths = [
+    '/usr/share/tesseract-ocr/4.00/tessdata',
+    '/usr/share/tesseract-ocr/tessdata',
+    '/app/.apt/usr/share/tesseract-ocr/4.00/tessdata'
+]
+
+for path in tessdata_paths:
+    if os.path.isdir(path):
+        os.environ['TESSDATA_PREFIX'] = path
+        logger.info(f"Using TESSDATA_PREFIX: {path}")
+        break
+else:
+    logger.warning("TESSDATA_PREFIX not found in standard locations. Tesseract may not work correctly.")
+    if 'TESSDATA_PREFIX' not in os.environ:
+        os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata'
+
+# Verify Tesseract is accessible
+try:
+    tesseract_version = subprocess.check_output(
+        [tesseract_cmd, '--version'], 
+        stderr=subprocess.STDOUT
+    ).decode('utf-8')
+    logger.info(f"Tesseract version: {tesseract_version.strip()}")
+    logger.info(f"Using Tesseract at: {tesseract_cmd}")
+    logger.info(f"Using TESSDATA_PREFIX: {os.environ.get('TESSDATA_PREFIX')}")
+    
+    # Verify language data is available
+    try:
+        langs = subprocess.check_output(
+            [tesseract_cmd, '--list-langs'], 
+            stderr=subprocess.STDOUT
+        ).decode('utf-8')
+        # Split the output by newline and skip the first line (which is 'List of available languages:')
+        lang_list = langs.strip().split('\n')[1:]
+        logger.info("Available languages: %s", lang_list)
+    except Exception as e:
+        logger.warning(f"Could not list Tesseract languages: {str(e)}")
+        
+except Exception as e:
+    logger.error(f"Tesseract not found or not working: {str(e)}")
+    logger.error(f"TESSERACT_CMD: {tesseract_cmd}")
+    logger.error(f"PATH: {os.environ.get('PATH')}")
+
+# Set Tesseract command path - check multiple possible locations
+tesseract_paths = [
+    '/app/.apt/usr/bin/tesseract',  # Heroku's apt buildpack path
+    '/usr/local/bin/tesseract',     # Common path in Heroku
+    '/usr/bin/tesseract',           # Standard Linux path
+    'tesseract'                     # Fallback to PATH
+]
+
+# Ensure upload folder exists and is writable
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.chmod(UPLOAD_FOLDER, 0o755)  # Make sure it's writable
+
+tesseract_found = False
+for path in tesseract_paths:
+    try:
+        pytesseract.pytesseract.tesseract_cmd = path
+        # Test if the path works
+        version = pytesseract.get_tesseract_version()
+        logger.info(f"Tesseract {version} found at: {path}")
+        # Set TESSDATA_PREFIX if not set
+        if 'TESSDATA_PREFIX' not in os.environ:
+            if path == '/app/.apt/usr/bin/tesseract':
+                os.environ['TESSDATA_PREFIX'] = '/app/.apt/usr/share/tesseract-ocr/4.00/tessdata'
+            elif path == '/usr/bin/tesseract':
+                os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata'
+            elif path == '/usr/local/bin/tesseract':
+                os.environ['TESSDATA_PREFIX'] = '/usr/local/share/tessdata'
+            else:
+                # Try to find tessdata in common locations
+                common_paths = [
+                    '/app/.apt/usr/share/tesseract-ocr/4.00/tessdata',
+                    '/usr/share/tesseract-ocr/4.00/tessdata',
+                    '/usr/local/share/tessdata',
+                    '/app/vendor/tesseract-ocr/share/tessdata'
+                ]
+                for tessdata_path in common_paths:
+                    if os.path.exists(tessdata_path):
+                        os.environ['TESSDATA_PREFIX'] = tessdata_path
+                        break
+        logger.info(f"Using TESSDATA_PREFIX: {os.environ.get('TESSDATA_PREFIX', 'Not set')}")
+        tesseract_found = True
+        break
+    except Exception as e:
+        logger.warning(f"Tesseract not found at {path}: {str(e)}")
+
+if not tesseract_found:
+    error_msg = 'Tesseract not found in any of the expected locations. Tried paths: ' + ', '.join(tesseract_paths)
+    logger.error(error_msg)
+    # Don't crash immediately, let the app start and fail on first OCR request
+    # This allows the health check to pass
+    pytesseract.pytesseract.tesseract_cmd = 'tesseract'  # Fallback
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB max file size
+
+# Task queue and worker pool
+task_queue = queue.Queue()
+result_store = {}
+result_lock = threading.Lock()
+
+# Thread pool for processing tasks
+MAX_WORKERS = 5
+executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
+
+def worker():
+    """Worker function to process tasks from the queue"""
+    while True:
+        task_id, task = task_queue.get()
+        if task is None:  # Shutdown signal
+            break
+        try:
+            result = process_verification(
+                task['file'],
+                task['last_name'],
+                task['birthday'],
+                task['student_id']
+            )
+            with result_lock:
+                result_store[task_id] = {
+                    'status': 'completed',
+                    'result': result,
+                    'timestamp': time.time()
+                }
+        except Exception as e:
+            with result_lock:
+                result_store[task_id] = {
+                    'status': 'error',
+                    'error': str(e),
+                    'timestamp': time.time()
+                }
+        task_queue.task_done()
+
+# Start worker threads
+for _ in range(MAX_WORKERS):
+    threading.Thread(target=worker, daemon=True).start()
+
+def process_verification(file, last_name, birthday, student_id):
+    """Process verification (moved from verify_student)"""
+    try:
+        # Process the image and extract text
+        image = Image.open(file)
+        image = image.convert('L')
+        
+        # Resize for better OCR
+        base_width = 2000
+        w_percent = (base_width / float(image.size[0]))
+        h_size = int((float(image.size[1]) * float(w_percent)))
+        image = image.resize((base_width, h_size), Image.Resampling.LANCZOS)
+        
+        # Convert to binary image
+        img_array = np.array(image)
+        _, binary_image = cv2.threshold(img_array, 150, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        image = Image.fromarray(binary_image)
+        
+        # Extract text with Tesseract using multiple configurations
+        configs = [
+            r'--oem 3 --psm 6',
+            r'--oem 3 --psm 4',
+            r'--oem 3 --psm 11'
+        ]
+        
+        all_text = []
+        for config in configs:
+            current_text = pytesseract.image_to_string(image, config=config)
+            if current_text.strip():
+                all_text.append(current_text.strip())
+        
+        # Combine all extracted text
+        full_text = ' '.join(all_text)
+        
+        # Clean and normalize all text for comparison
+        clean_extracted = clean_text_for_matching(full_text)
+        clean_last_name = clean_text_for_matching(last_name)
+        clean_student_id = clean_text_for_matching(student_id).replace(' ', '')
+        
+        # Special handling for birthday to handle different formats
+        clean_birthday = clean_date_string(birthday)
+        clean_extracted_date = clean_date_string(full_text)
+        
+        # Verification
+        last_name_found = clean_last_name in clean_extracted
+        birthday_found = clean_birthday and clean_birthday in clean_extracted_date
+        student_id_found = clean_student_id and clean_student_id in clean_extracted.replace(' ', '')
+        
+        return {
+            'success': True,
+            'verified': all([last_name_found, birthday_found, student_id_found]),
+            'verification': {
+                'last_name': {
+                    'provided': last_name,
+                    'verified': last_name_found,
+                },
+                'birthday': {
+                    'provided': birthday,
+                    'verified': birthday_found,
+                },
+                'student_id': {
+                    'provided': student_id,
+                    'verified': student_id_found,
+                }
+            }
+        }
+    except Exception as e:
+        app.logger.error(f"Error in verification: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -79,6 +308,66 @@ def verify_student():
 
     if file.filename == '':
         return jsonify({'success': False, 'error': 'No selected file'}), 400
+        
+    # Create a unique task ID
+    task_id = str(int(time.time() * 1000)) + '_' + str(hash(file.filename))
+    
+    # Save file to process
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+    
+    # Add task to queue
+    with open(filepath, 'rb') as f:
+        task_queue.put((task_id, {
+            'file': f.read(),
+            'last_name': last_name,
+            'birthday': birthday,
+            'student_id': student_id
+        }))
+    
+    # Clean up the file
+    os.remove(filepath)
+    
+    # Return immediately with task ID
+    return jsonify({
+        'success': True,
+        'task_id': task_id,
+        'status': 'queued',
+        'message': 'Request received and queued for processing'
+    })
+
+@app.route('/api/verify_status/<task_id>', methods=['GET'])
+def verify_status(task_id):
+    """Check the status of a verification task"""
+    with result_lock:
+        result = result_store.get(task_id)
+    
+    if not result:
+        return jsonify({
+            'success': True,
+            'status': 'not_found',
+            'message': 'Task ID not found'
+        })
+    
+    if result['status'] == 'completed':
+        return jsonify({
+            'success': True,
+            'status': 'completed',
+            'result': result['result']
+        })
+    elif result['status'] == 'error':
+        return jsonify({
+            'success': False,
+            'status': 'error',
+            'error': result['error']
+        })
+    
+    return jsonify({
+        'success': True,
+        'status': 'processing',
+        'message': 'Task is still being processed'
+    })
 
     try:
         # Process the image and extract text
@@ -386,6 +675,24 @@ def upload_file():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+def cleanup_old_results():
+    """Clean up old results from the result store"""
+    while True:
+        time.sleep(3600)  # Clean up every hour
+        current_time = time.time()
+        with result_lock:
+            # Remove results older than 24 hours
+            to_remove = [
+                task_id for task_id, result in result_store.items()
+                if current_time - result.get('timestamp', 0) > 86400
+            ]
+            for task_id in to_remove:
+                result_store.pop(task_id, None)
+
+# Start cleanup thread
+cleanup_thread = threading.Thread(target=cleanup_old_results, daemon=True)
+cleanup_thread.start()
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, threaded=True)

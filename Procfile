@@ -1,1 +1,1 @@
-web: TESSDATA_PREFIX=/app/.apt/usr/share/tesseract-ocr/4.00/tessdata gunicorn --bind 0.0.0.0:$PORT --workers 4 --timeout 120 --log-level=debug --access-logfile - --error-logfile - wsgi:application
+web: gunicorn --bind 0.0.0.0:$PORT --timeout 3000 --workers 1 --worker-class gthread --threads 4 --log-level info --access-logfile - --error-logfile - wsgi:app
