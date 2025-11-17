@@ -1,0 +1,29 @@
+#!/bin/bash
+# This script runs after Python buildpack compile phase
+# Copy Tesseract to /app/bin for easier access
+
+echo "-----> Post-compile: Setting up Tesseract in /app/bin..."
+
+# Create directories
+mkdir -p /app/bin
+mkdir -p /app/share/tesseract-ocr/tessdata
+
+# Copy Tesseract from system location to /app/bin
+if [ -f /usr/bin/tesseract ]; then
+    echo "Copying Tesseract from /usr/bin to /app/bin..."
+    cp /usr/bin/tesseract /app/bin/tesseract
+    chmod +x /app/bin/tesseract
+    
+    # Copy tessdata
+    if [ -d /usr/share/tesseract-ocr/tessdata ]; then
+        echo "Copying tessdata to /app/share/tesseract-ocr/tessdata..."
+        cp -r /usr/share/tesseract-ocr/tessdata/* /app/share/tesseract-ocr/tessdata/ 2>/dev/null || true
+    fi
+    
+    # Verify
+    /app/bin/tesseract --version
+    echo "-----> Tesseract successfully installed to /app/bin/tesseract"
+else
+    echo "WARNING: Tesseract not found in /usr/bin, will try to find it at runtime"
+fi
+

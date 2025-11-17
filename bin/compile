@@ -1,0 +1,39 @@
+#!/bin/bash
+# This script runs during the Heroku buildpack build phase
+
+echo "-----> Installing Tesseract to /app/bin..."
+
+# Create directories
+mkdir -p /app/bin
+mkdir -p /app/share/tesseract-ocr/tessdata
+
+# Install Tesseract using apt-get (via apt buildpack)
+if [ -f /usr/bin/tesseract ]; then
+    echo "Copying Tesseract from /usr/bin to /app/bin..."
+    cp /usr/bin/tesseract /app/bin/tesseract
+    chmod +x /app/bin/tesseract
+    
+    # Copy tessdata
+    if [ -d /usr/share/tesseract-ocr/tessdata ]; then
+        echo "Copying tessdata to /app/share/tesseract-ocr/tessdata..."
+        cp -r /usr/share/tesseract-ocr/tessdata/* /app/share/tesseract-ocr/tessdata/ 2>/dev/null || true
+    fi
+    
+    # Verify
+    /app/bin/tesseract --version
+    echo "-----> Tesseract installed successfully to /app/bin/tesseract"
+else
+    echo "WARNING: Tesseract not found in /usr/bin. Make sure apt buildpack runs first."
+    # Try to find it
+    TESSERACT_PATH=$(which tesseract 2>/dev/null || find /usr -name tesseract -type f 2>/dev/null | head -1)
+    if [ -n "$TESSERACT_PATH" ] && [ -f "$TESSERACT_PATH" ]; then
+        echo "Found Tesseract at $TESSERACT_PATH, copying to /app/bin..."
+        cp "$TESSERACT_PATH" /app/bin/tesseract
+        chmod +x /app/bin/tesseract
+        /app/bin/tesseract --version
+    else
+        echo "ERROR: Could not find Tesseract"
+        exit 1
+    fi
+fi
+

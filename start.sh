@@ -1,14 +1,26 @@
 #!/bin/bash
 set -e  # Exit on error
 
-# Set TESSDATA_PREFIX if not set
-export TESSDATA_PREFIX=${TESSDATA_PREFIX:-/usr/share/tesseract-ocr/4.00/tessdata/}
+# Set TESSDATA_PREFIX - check app directory first, then system
+if [ -d /app/share/tesseract-ocr/tessdata ]; then
+    export TESSDATA_PREFIX=/app/share/tesseract-ocr/tessdata
+elif [ -d /usr/share/tesseract-ocr/4.00/tessdata ]; then
+    export TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
+else
+    export TESSDATA_PREFIX=${TESSDATA_PREFIX:-/usr/share/tesseract-ocr/4.00/tessdata/}
+fi
 
-# Set TESSERACT_CMD if not set
-export TESSERACT_CMD=${TESSERACT_CMD:-/usr/bin/tesseract}
+# Set TESSERACT_CMD - check app/bin first, then system
+if [ -f /app/bin/tesseract ]; then
+    export TESSERACT_CMD=/app/bin/tesseract
+elif [ -f /usr/bin/tesseract ]; then
+    export TESSERACT_CMD=/usr/bin/tesseract
+else
+    export TESSERACT_CMD=${TESSERACT_CMD:-/app/bin/tesseract}
+fi
 
-# Ensure PATH includes /usr/bin
-export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+# Ensure PATH includes /app/bin first, then system paths
+export PATH="/app/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 # Create necessary directories
 mkdir -p $TESSDATA_PREFIX
@@ -19,8 +31,13 @@ echo "PATH: $PATH"
 echo "TESSERACT_CMD: $TESSERACT_CMD"
 echo "TESSDATA_PREFIX: $TESSDATA_PREFIX"
 
-# Check if tesseract exists
-if [ -f "$TESSERACT_CMD" ]; then
+# Check if tesseract exists in /app/bin first
+if [ -f /app/bin/tesseract ]; then
+    echo "Tesseract found in /app/bin/tesseract"
+    export TESSERACT_CMD=/app/bin/tesseract
+    $TESSERACT_CMD --version || echo "Warning: Tesseract found but version check failed"
+    $TESSERACT_CMD --list-langs || echo "Warning: Tesseract found but language list failed"
+elif [ -f "$TESSERACT_CMD" ]; then
     echo "Tesseract found at: $TESSERACT_CMD"
     $TESSERACT_CMD --version || echo "Warning: Tesseract found but version check failed"
     $TESSERACT_CMD --list-langs || echo "Warning: Tesseract found but language list failed"
@@ -28,21 +45,23 @@ else
     echo "Warning: Tesseract not found at $TESSERACT_CMD, trying to find in PATH..."
     
     # Try to find tesseract
-    TESSERACT_FOUND=$(which tesseract 2>/dev/null || find /usr -name tesseract -type f 2>/dev/null | head -1)
+    TESSERACT_FOUND=$(which tesseract 2>/dev/null || find /app /usr -name tesseract -type f 2>/dev/null | head -1)
     
     if [ -n "$TESSERACT_FOUND" ] && [ -f "$TESSERACT_FOUND" ]; then
         echo "Found Tesseract at: $TESSERACT_FOUND"
         export TESSERACT_CMD="$TESSERACT_FOUND"
-        # Create symlink if needed
-        if [ ! -f "/usr/bin/tesseract" ]; then
-            echo "Creating symlink from $TESSERACT_FOUND to /usr/bin/tesseract"
-            ln -sf "$TESSERACT_FOUND" /usr/bin/tesseract 2>/dev/null || true
+        # Copy to /app/bin if found elsewhere
+        if [ "$TESSERACT_FOUND" != "/app/bin/tesseract" ] && [ -d /app/bin ]; then
+            echo "Copying Tesseract to /app/bin/tesseract for future use..."
+            cp "$TESSERACT_FOUND" /app/bin/tesseract 2>/dev/null || true
+            chmod +x /app/bin/tesseract 2>/dev/null || true
+            export TESSERACT_CMD=/app/bin/tesseract
         fi
-        $TESSERACT_FOUND --version || echo "Error: Tesseract version check failed"
+        $TESSERACT_CMD --version || echo "Error: Tesseract version check failed"
     else
         echo "ERROR: Tesseract not found anywhere!"
         echo "Searching for tesseract..."
-        find /usr -name "*tesseract*" -type f 2>/dev/null | head -10
+        find /app /usr -name "*tesseract*" -type f 2>/dev/null | head -10
         echo "PATH contents: $PATH"
     fi
 fi
