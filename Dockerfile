@@ -16,12 +16,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install system dependencies
-RUN echo "deb http://deb.debian.org/debian buster main" >> /etc/apt/sources.list && \
-    echo "deb-src http://deb.debian.org/debian buster main" >> /etc/apt/sources.list && \
-    apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-eng \
-    tesseract-ocr-all \
+    tesseract-ocr-script-latn \
     libleptonica-dev \
     libtesseract-dev \
     gcc \
@@ -31,7 +29,6 @@ RUN echo "deb http://deb.debian.org/debian buster main" >> /etc/apt/sources.list
     libsm6 \
     libxext6 \
     libxrender1 \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/tesseract /usr/local/bin/tesseract \
     && tesseract --version \
