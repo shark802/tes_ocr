@@ -19,10 +19,10 @@ logger = logging.getLogger(__name__)
 
 # Set Tesseract command path - check multiple possible locations
 tesseract_paths = [
-    '/app/.apt/usr/bin/tesseract',  # Heroku's apt buildpack path (first priority)
-    '/usr/bin/tesseract',  # Common Linux path
-    '/usr/local/bin/tesseract',  # Another common path
-    'tesseract'  # Fallback to PATH
+    '/app/.apt/usr/bin/tesseract',  # Heroku's apt buildpack path
+    '/usr/local/bin/tesseract',     # Common path in Heroku
+    '/usr/bin/tesseract',           # Standard Linux path
+    'tesseract'                     # Fallback to PATH
 ]
 
 # Ensure upload folder exists and is writable
@@ -39,12 +39,24 @@ for path in tesseract_paths:
         logger.info(f"Tesseract {version} found at: {path}")
         # Set TESSDATA_PREFIX if not set
         if 'TESSDATA_PREFIX' not in os.environ:
-            if path == '/usr/bin/tesseract':
-                os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.0.0/tessdata'
-            elif path == '/app/.apt/usr/bin/tesseract':
-                os.environ['TESSDATA_PREFIX'] = '/app/.apt/usr/share/tesseract-ocr/4.0.0/tessdata'
-            elif path == '/app/vendor/tesseract-ocr/bin/tesseract':
-                os.environ['TESSDATA_PREFIX'] = '/app/vendor/tesseract-ocr/share/tessdata'
+            if path == '/app/.apt/usr/bin/tesseract':
+                os.environ['TESSDATA_PREFIX'] = '/app/.apt/usr/share/tesseract-ocr/4.00/tessdata'
+            elif path == '/usr/bin/tesseract':
+                os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata'
+            elif path == '/usr/local/bin/tesseract':
+                os.environ['TESSDATA_PREFIX'] = '/usr/local/share/tessdata'
+            else:
+                # Try to find tessdata in common locations
+                common_paths = [
+                    '/app/.apt/usr/share/tesseract-ocr/4.00/tessdata',
+                    '/usr/share/tesseract-ocr/4.00/tessdata',
+                    '/usr/local/share/tessdata',
+                    '/app/vendor/tesseract-ocr/share/tessdata'
+                ]
+                for tessdata_path in common_paths:
+                    if os.path.exists(tessdata_path):
+                        os.environ['TESSDATA_PREFIX'] = tessdata_path
+                        break
         logger.info(f"Using TESSDATA_PREFIX: {os.environ.get('TESSDATA_PREFIX', 'Not set')}")
         tesseract_found = True
         break
