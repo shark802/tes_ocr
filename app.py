@@ -19,12 +19,16 @@ logger = logging.getLogger(__name__)
 
 # Set Tesseract command path - check multiple possible locations
 tesseract_paths = [
+    '/app/.apt/usr/bin/tesseract',  # Heroku's apt buildpack path (first priority)
     '/usr/bin/tesseract',  # Common Linux path
     '/usr/local/bin/tesseract',  # Another common path
-    '/app/.apt/usr/bin/tesseract',  # Heroku's buildpack path
-    '/app/vendor/tesseract-ocr/bin/tesseract',  # Heroku buildpack path
     'tesseract'  # Fallback to PATH
 ]
+
+# Ensure upload folder exists and is writable
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.chmod(UPLOAD_FOLDER, 0o755)  # Make sure it's writable
 
 tesseract_found = False
 for path in tesseract_paths:
@@ -55,7 +59,7 @@ if not tesseract_found:
     pytesseract.pytesseract.tesseract_cmd = 'tesseract'  # Fallback
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB max file size
 
 # Task queue and worker pool

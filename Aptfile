@@ -2,3 +2,6 @@ tesseract-ocr
 tesseract-ocr-eng
 libtesseract-dev
 libleptonica-dev
+libsm6
+libxrender1
+libxext6

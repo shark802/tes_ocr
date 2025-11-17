@@ -1,1 +1,1 @@
-web: chmod +x ./start.sh && ./start.sh
+web: TESSDATA_PREFIX=/app/.apt/usr/share/tesseract-ocr/4.00/tessdata gunicorn --bind 0.0.0.0:$PORT --workers 4 --timeout 120 --log-level=debug --access-logfile - --error-logfile - wsgi:application
