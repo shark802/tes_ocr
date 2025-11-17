@@ -409,6 +409,7 @@ def verify_student():
         last_name_found = clean_last_name in clean_extracted
         birthday_found = clean_birthday and clean_birthday in clean_extracted_date
         student_id_found = clean_student_id and clean_student_id in clean_extracted.replace(' ', '')
+        verified = all([last_name_found, birthday_found, student_id_found])
         
         # Find where the data was found (for debugging)
         def find_match_position(needle, haystack, is_date=False):
@@ -439,9 +440,8 @@ def verify_student():
                     return f"...{haystack[max(0, pos-10):min(len(haystack), pos+len(needle)+10)]}..."
             return None
         
-        return jsonify({
-            'success': True,
-            'verified': all([last_name_found, birthday_found, student_id_found]),
+        response_payload = {
+            'verified': verified,
             'verification': {
                 'last_name': {
                     'provided': last_name,
@@ -463,7 +463,18 @@ def verify_student():
             },
             'extracted_text': full_text,  # For debugging
             'cleaned_extracted_text': clean_extracted  # For debugging
-        })
+        }
+
+        if not verified:
+            response_payload.update({
+                'success': False,
+                'error': 'Verification failed. Last name, birthday, and student ID must all match the extracted text.'
+            })
+            return jsonify(response_payload), 400
+
+        response_payload['success'] = True
+
+        return jsonify(response_payload)
 
     except Exception as e:
         app.logger.error(f"Error processing request: {str(e)}", exc_info=True)
