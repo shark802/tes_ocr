@@ -4,12 +4,13 @@ FROM python:3.9-slim-bullseye
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    FLASK_APP=app.py \
+    FLASK_APP=wsgi.py \
     FLASK_ENV=production \
     PYTHONPATH=/app \
     TESSERACT_CMD=/usr/bin/tesseract \
     TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata \
-    PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
+    LD_LIBRARY_PATH="/usr/local/lib:/usr/lib/x86_64-linux-gnu:/usr/lib"
 
 # Set the working directory
 WORKDIR /app
@@ -25,11 +26,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     libgl1-mesa-glx \
     libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -s /usr/bin/tesseract /usr/local/bin/tesseract \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && ln -sf /usr/bin/tesseract /usr/local/bin/tesseract
 
 # Verify Tesseract installation
 RUN tesseract --version && \
@@ -49,6 +51,12 @@ COPY . .
 RUN mkdir -p /app/static/uploads && \
     chmod -R 755 /app/static/ && \
     chmod +x /app/start.sh
+
+# Expose the port the app runs on
+EXPOSE $PORT
+
+# Command to run the application
+CMD ["/app/start.sh"]
 
 # Expose the port the app runs on
 EXPOSE $PORT
