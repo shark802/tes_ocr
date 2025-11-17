@@ -270,36 +270,99 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 def clean_date_string(date_str):
-    """Clean and normalize date string for comparison"""
+    """
+    Clean and normalize date string for comparison.
+    Supports multiple date formats:
+    - yyyy/mm/dd
+    - yyyy dd mm
+    - dd mm yyyy
+    - mm dd yyyy
+    - Month names (January, Jan, etc.)
+    """
     if not date_str:
         return ""
+        
     # Remove all non-alphanumeric characters and convert to lowercase
-    cleaned = re.sub(r'[^a-z0-9]', '', date_str.lower())
+    cleaned = re.sub(r'[^a-z0-9]', ' ', date_str.lower().strip())
     
     # Handle month names (convert to numbers if needed)
-    # Include full month names, 3-letter abbreviations, and other common variations
-    # Order matters: check longer names first to avoid partial matches
     month_map = {
         # Full month names
         'january': '01', 'february': '02', 'march': '03', 'april': '04', 
         'may': '05', 'june': '06', 'july': '07', 'august': '08',
-        'september': '09', 'october': '10', 'november': '11', 'december': '12','sept': '09',
+        'september': '09', 'october': '10', 'november': '11', 'december': '12',
         # 3-letter abbreviations
-        'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
-        'jun': '06', 'jul': '07', 'aug': '08', 'sep': '09',
-        'oct': '10', 'nov': '11', 'dec': '12',
-        # Other common variations (keep for backward compatibility)
-        'june': '06', 'july': '07'
+        'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05',
+        'jun': '06', 'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10',
+        'nov': '11', 'dec': '12',
+        # Other variations
+        'sept': '09'
     }
     
-    # Check for month names and convert to numbers
-    # Sort by length (longest first) to match full names before abbreviations
+    # Replace month names with numbers
     for month, num in sorted(month_map.items(), key=lambda x: len(x[0]), reverse=True):
-        if month in cleaned:
-            cleaned = cleaned.replace(month, num)
-            break
+        cleaned = re.sub(r'\b' + re.escape(month) + r'\b', num, cleaned)
     
-    return cleaned
+    # Extract all numbers
+    numbers = re.findall(r'\d+', cleaned)
+    
+    if len(numbers) != 3:
+        # If we don't have exactly 3 numbers, return the cleaned string as is
+        return re.sub(r'\s+', '', cleaned)
+    
+    # Try different date formats
+    try:
+        # Convert to integers
+        nums = [int(n) for n in numbers]
+        
+        # Try to determine the format by checking the ranges
+        # Look for the year (should be the only number >= 1000)
+        year_idx = next((i for i, x in enumerate(nums) if x >= 1000), -1)
+        
+        if year_idx != -1:
+            year = nums[year_idx]
+            other_nums = [n for i, n in enumerate(nums) if i != year_idx]
+            
+            # If year is first (yyyy mm dd or yyyy dd mm)
+            if year_idx == 0:
+                # Assume yyyy mm dd if first number after year is a valid month (1-12)
+                if 1 <= other_nums[0] <= 12:
+                    month = f"{other_nums[0]:02d}"
+                    day = f"{other_nums[1]:02d}"
+                else:
+                    # Otherwise assume yyyy dd mm
+                    day = f"{other_nums[0]:02d}"
+                    month = f"{other_nums[1]:02d}"
+            else:
+                # Year is in the middle or end
+                if year_idx == 1:  # dd yyyy mm or mm yyyy dd
+                    if nums[0] > 12:  # If first number is > 12, it's probably day
+                        day = f"{nums[0]:02d}"
+                        month = f"{nums[2]:02d}"
+                    else:  # Otherwise first number is probably month
+                        month = f"{nums[0]:02d}"
+                        day = f"{nums[2]:02d}"
+                else:  # year_idx == 2 (mm dd yyyy or dd mm yyyy)
+                    if nums[0] > 12:  # If first number is > 12, it's probably day
+                        day = f"{nums[0]:02d}"
+                        month = f"{nums[1]:02d}"
+                    else:  # Otherwise first number is probably month
+                        month = f"{nums[0]:02d}"
+                        day = f"{nums[1]:02d}"
+            
+            # Validate the date
+            from datetime import datetime
+            try:
+                # Try to create a date to validate
+                datetime.strptime(f"{year}-{month}-{day}", "%Y-%m-%d")
+                return f"{year}{month}{day}"  # Return in yyyymmdd format for comparison
+            except ValueError:
+                pass  # Fall through to return the cleaned string
+    except (ValueError, IndexError):
+        pass  # Fall through to return the cleaned string
+    
+    # If we couldn't parse a proper date, return the cleaned string without spaces
+    return re.sub(r'\s+', '', cleaned)
 
 def clean_text_for_matching(text):
     """Clean and normalize text for case-insensitive matching and handle special characters"""
