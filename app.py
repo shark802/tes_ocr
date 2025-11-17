@@ -381,10 +381,10 @@ def verify_student():
     birthday = request.form.get('birthday', '').strip()
     student_id = request.form.get('student_id', '').strip()
     
-    if not all([last_name, birthday, student_id]):
+    if not all([last_name, student_id]):
         return jsonify({
             'success': False,
-            'error': 'Last name, birthday, and student ID are required'
+            'error': 'Last name, and student ID are required'
         }), 400
 
     if file.filename == '':
@@ -465,12 +465,12 @@ def verify_student():
         clean_student_id = clean_text_for_matching(student_id).replace(' ', '')
         
         # Special handling for birthday to handle different formats
-        clean_birthday = clean_date_string(birthday)
-        clean_extracted_date = clean_date_string(full_text)
+        # clean_birthday = clean_date_string(birthday)
+        # clean_extracted_date = clean_date_string(full_text)
         
         # Verification
         last_name_found = clean_last_name in clean_extracted
-        birthday_found = clean_birthday and clean_birthday in clean_extracted_date
+        # birthday_found = clean_birthday and clean_birthday in clean_extracted_date
         student_id_found = clean_student_id and clean_student_id in clean_extracted.replace(' ', '')
         
         # Find where the data was found (for debugging)
@@ -504,20 +504,20 @@ def verify_student():
         
         return jsonify({
             'success': True,
-            'verified': all([last_name_found, birthday_found, student_id_found]),
+            'verified': all([last_name_found, student_id_found]),
             'verification': {
                 'last_name': {
                     'provided': last_name,
                     'verified': last_name_found,
                     'found_in': find_match_position(last_name, full_text)
                 },
-                'birthday': {
-                    'provided': birthday,
-                    'verified': birthday_found,
-                    'found_in': find_match_position(birthday, full_text, is_date=True),
-                    'normalized': clean_birthday,
-                    'found_normalized': clean_extracted_date
-                },
+                # 'birthday': {
+                #     'provided': birthday,
+                #     'verified': birthday_found,
+                #     'found_in': find_match_position(birthday, full_text, is_date=True),
+                #     'normalized': clean_birthday,
+                #     'found_normalized': clean_extracted_date
+                # },
                 'student_id': {
                     'provided': student_id,
                     'verified': student_id_found,
