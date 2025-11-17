@@ -111,40 +111,68 @@ def verify_tesseract():
         
         # Try to find where tesseract might be
         import subprocess
+        app.logger.warning("  Attempting to locate Tesseract...")
+        
+        # Try 'which' command
         try:
             result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True, timeout=2)
+            app.logger.warning(f"  'which tesseract' exit code: {result.returncode}, output: {result.stdout.strip() or '(empty)'}")
             if result.returncode == 0:
                 found_path = result.stdout.strip()
-                app.logger.warning(f"  'which tesseract' found: {found_path}")
-                if found_path and found_path != current_cmd:
-                    app.logger.warning(f"  Attempting to use {found_path}")
-                    pytesseract.pytesseract.tesseract_cmd = found_path
-                    try:
-                        version = pytesseract.get_tesseract_version()
-                        app.logger.info(f"✓ Successfully switched to: {found_path}, version: {version}")
-                        return True
-                    except Exception as retry_error:
-                        app.logger.error(f"  Failed to use {found_path}: {retry_error}")
+                if found_path:
+                    app.logger.warning(f"  'which tesseract' found: {found_path}")
+                    if found_path != current_cmd:
+                        app.logger.warning(f"  Attempting to use {found_path}")
+                        pytesseract.pytesseract.tesseract_cmd = found_path
+                        try:
+                            version = pytesseract.get_tesseract_version()
+                            app.logger.info(f"✓ Successfully switched to: {found_path}, version: {version}")
+                            return True
+                        except Exception as retry_error:
+                            app.logger.error(f"  Failed to use {found_path}: {retry_error}")
         except Exception as find_error:
-            app.logger.debug(f"  'which' command failed: {find_error}")
+            app.logger.error(f"  'which' command failed: {find_error}")
         
         # Try filesystem search
         try:
-            result = subprocess.run(['find', '/usr', '/app', '-name', 'tesseract', '-type', 'f', '-executable'], 
-                                  capture_output=True, text=True, timeout=5)
+            app.logger.warning("  Searching filesystem for tesseract...")
+            result = subprocess.run(['find', '/usr', '/app', '-name', 'tesseract', '-type', 'f', '-executable', '2>/dev/null'], 
+                                  capture_output=True, text=True, timeout=5, shell=False)
+            app.logger.warning(f"  'find' exit code: {result.returncode}")
+            if result.stdout.strip():
+                app.logger.warning(f"  'find' output: {result.stdout.strip()[:200]}")
             if result.returncode == 0 and result.stdout.strip():
                 found_paths = result.stdout.strip().split('\n')
-                app.logger.warning(f"  Found tesseract executables: {found_paths[:3]}")
+                app.logger.warning(f"  Found {len(found_paths)} tesseract executables: {found_paths[:3]}")
                 for found_path in found_paths[:3]:
-                    try:
-                        pytesseract.pytesseract.tesseract_cmd = found_path
-                        version = pytesseract.get_tesseract_version()
-                        app.logger.info(f"✓ Successfully using: {found_path}, version: {version}")
-                        return True
-                    except:
-                        continue
+                    if found_path and os.path.exists(found_path):
+                        try:
+                            app.logger.warning(f"  Trying: {found_path}")
+                            pytesseract.pytesseract.tesseract_cmd = found_path
+                            version = pytesseract.get_tesseract_version()
+                            app.logger.info(f"✓ Successfully using: {found_path}, version: {version}")
+                            return True
+                        except Exception as try_error:
+                            app.logger.debug(f"  Failed to use {found_path}: {try_error}")
+                            continue
+            else:
+                app.logger.error("  'find' found no tesseract executables")
         except Exception as find_error:
-            app.logger.debug(f"  'find' command failed: {find_error}")
+            app.logger.error(f"  'find' command failed: {find_error}")
+        
+        # Check common locations directly
+        app.logger.warning("  Checking common installation paths...")
+        common_paths = ['/usr/bin/tesseract', '/usr/local/bin/tesseract', '/app/bin/tesseract']
+        for path in common_paths:
+            if os.path.exists(path):
+                app.logger.warning(f"  Found at {path}, attempting to use...")
+                try:
+                    pytesseract.pytesseract.tesseract_cmd = path
+                    version = pytesseract.get_tesseract_version()
+                    app.logger.info(f"✓ Successfully using: {path}, version: {version}")
+                    return True
+                except Exception as try_error:
+                    app.logger.debug(f"  Failed to use {path}: {try_error}")
         
         # Check if file exists (only if current_cmd is not None)
         if current_cmd and os.path.exists(current_cmd):
