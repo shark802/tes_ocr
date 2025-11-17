@@ -42,7 +42,9 @@ try:
             [tesseract_cmd, '--list-langs'], 
             stderr=subprocess.STDOUT
         ).decode('utf-8')
-        logger.info(f"Available languages: {langs.strip().split('\n')[1:]}")
+        # Split the output by newline and skip the first line (which is 'List of available languages:')
+        lang_list = langs.strip().split('\n')[1:]
+        logger.info("Available languages: %s", lang_list)
     except Exception as e:
         logger.warning(f"Could not list Tesseract languages: {str(e)}")
         
