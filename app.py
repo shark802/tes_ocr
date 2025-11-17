@@ -78,19 +78,73 @@ else:
 app = Flask(__name__)
 
 # Set TESSDATA_PREFIX - find it dynamically
-if not os.environ.get('TESSDATA_PREFIX'):
+def find_tessdata():
+    """Find tessdata directory with language files"""
+    import subprocess
+    
+    # If already set and exists, use it
+    if os.environ.get('TESSDATA_PREFIX'):
+        prefix = os.environ.get('TESSDATA_PREFIX')
+        if os.path.exists(prefix) and os.path.exists(os.path.join(prefix, 'eng.traineddata')):
+            return prefix
+    
     # Try common locations
     tessdata_paths = [
         '/usr/share/tesseract-ocr/tessdata',
         '/usr/share/tesseract-ocr/4.00/tessdata',
+        '/usr/share/tesseract-ocr/5/tessdata',
         '/app/share/tesseract-ocr/tessdata',
     ]
+    
     for path in tessdata_paths:
         if os.path.exists(path):
-            os.environ['TESSDATA_PREFIX'] = path
-            break
-    else:
-        os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata/'
+            # Check if eng.traineddata exists in this path
+            eng_file = os.path.join(path, 'eng.traineddata')
+            if os.path.exists(eng_file):
+                return path
+    
+    # Try to find using tesseract --print-parameters
+    try:
+        result = subprocess.run(['tesseract', '--print-parameters'], 
+                              capture_output=True, text=True, timeout=2)
+        # Look for tessdata path in output
+        for line in result.stderr.split('\n'):
+            if 'tessdata' in line.lower():
+                # Extract path from line
+                import re
+                match = re.search(r'([/\w]+tessdata)', line)
+                if match:
+                    potential_path = match.group(1)
+                    if os.path.exists(potential_path):
+                        return potential_path
+    except:
+        pass
+    
+    # Last resort: return default
+    return '/usr/share/tesseract-ocr/tessdata'
+
+# Set TESSDATA_PREFIX
+tessdata_prefix = find_tessdata()
+os.environ['TESSDATA_PREFIX'] = tessdata_prefix
+
+# Verify eng.traineddata exists
+eng_file = os.path.join(tessdata_prefix, 'eng.traineddata')
+if not os.path.exists(eng_file):
+    import logging
+    logging.warning(f"eng.traineddata not found at {eng_file}")
+    # Try to find it
+    import subprocess
+    try:
+        result = subprocess.run(['find', '/usr', '/app', '-name', 'eng.traineddata', '-type', 'f'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            found_path = result.stdout.strip().split('\n')[0]
+            found_dir = os.path.dirname(found_path)
+            logging.warning(f"Found eng.traineddata at {found_path}, updating TESSDATA_PREFIX to {found_dir}")
+            os.environ['TESSDATA_PREFIX'] = found_dir
+            tessdata_prefix = found_dir
+    except:
+        pass
 
 # Verify Tesseract is accessible after app creation
 def verify_tesseract():

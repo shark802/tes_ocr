@@ -13,15 +13,52 @@ else
     echo "Using default Tesseract path: $TESSERACT_CMD"
 fi
 
-# Find tessdata directory
-if [ -d /usr/share/tesseract-ocr/tessdata ]; then
-    export TESSDATA_PREFIX=/usr/share/tesseract-ocr/tessdata
-elif [ -d /usr/share/tesseract-ocr/4.00/tessdata ]; then
-    export TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata
-elif [ -d /app/share/tesseract-ocr/tessdata ]; then
-    export TESSDATA_PREFIX=/app/share/tesseract-ocr/tessdata
+# Find tessdata directory - must have eng.traineddata file
+find_tessdata() {
+    local paths=(
+        "/usr/share/tesseract-ocr/tessdata"
+        "/usr/share/tesseract-ocr/4.00/tessdata"
+        "/usr/share/tesseract-ocr/5/tessdata"
+        "/app/share/tesseract-ocr/tessdata"
+    )
+    
+    for path in "${paths[@]}"; do
+        if [ -d "$path" ] && [ -f "$path/eng.traineddata" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
+    
+    # Try to get from tesseract itself
+    if command -v tesseract &> /dev/null; then
+        local tessdata_path=$(tesseract --print-parameters 2>&1 | grep -i tessdata | head -1 | grep -o '/[^ ]*tessdata' | head -1)
+        if [ -n "$tessdata_path" ] && [ -d "$tessdata_path" ] && [ -f "$tessdata_path/eng.traineddata" ]; then
+            echo "$tessdata_path"
+            return 0
+        fi
+    fi
+    
+    # Default fallback
+    echo "/usr/share/tesseract-ocr/tessdata"
+}
+
+TESSDATA_PREFIX_FOUND=$(find_tessdata)
+export TESSDATA_PREFIX="$TESSDATA_PREFIX_FOUND"
+echo "TESSDATA_PREFIX set to: $TESSDATA_PREFIX"
+
+# Verify eng.traineddata exists
+if [ -f "$TESSDATA_PREFIX/eng.traineddata" ]; then
+    echo "✓ Found eng.traineddata at $TESSDATA_PREFIX/eng.traineddata"
 else
-    export TESSDATA_PREFIX=${TESSDATA_PREFIX:-/usr/share/tesseract-ocr/4.00/tessdata/}
+    echo "WARNING: eng.traineddata not found at $TESSDATA_PREFIX/eng.traineddata"
+    echo "Searching for eng.traineddata..."
+    find /usr /app -name "eng.traineddata" 2>/dev/null | head -5
+    if [ -n "$(find /usr /app -name "eng.traineddata" 2>/dev/null | head -1)" ]; then
+        FOUND_PATH=$(find /usr /app -name "eng.traineddata" 2>/dev/null | head -1 | xargs dirname)
+        echo "Found eng.traineddata at: $FOUND_PATH"
+        export TESSDATA_PREFIX="$FOUND_PATH"
+        echo "Updated TESSDATA_PREFIX to: $TESSDATA_PREFIX"
+    fi
 fi
 
 # Ensure PATH includes common locations
