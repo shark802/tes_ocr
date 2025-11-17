@@ -11,10 +11,17 @@ import numpy as np
 # Set Tesseract command path - works in Docker, Heroku, and local development
 def find_tesseract():
     """Find Tesseract executable with multiple fallback strategies"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # Strategy 1: Check environment variable
     tesseract_cmd = os.environ.get('TESSERACT_CMD')
-    if tesseract_cmd and os.path.exists(tesseract_cmd) and os.access(tesseract_cmd, os.X_OK):
-        return tesseract_cmd
+    if tesseract_cmd:
+        if os.path.exists(tesseract_cmd) and os.access(tesseract_cmd, os.X_OK):
+            logger.info(f"Tesseract found via TESSERACT_CMD: {tesseract_cmd}")
+            return tesseract_cmd
+        else:
+            logger.warning(f"TESSERACT_CMD set to {tesseract_cmd} but file not accessible")
     
     # Strategy 2: Try common installation paths
     common_paths = [
@@ -25,33 +32,85 @@ def find_tesseract():
     ]
     for path in common_paths:
         if os.path.exists(path) and os.access(path, os.X_OK):
+            logger.info(f"Tesseract found at common path: {path}")
             return path
     
     # Strategy 3: Try to find in PATH
+    # First, ensure PATH includes common locations
+    current_path = os.environ.get('PATH', '')
+    if '/usr/bin' not in current_path:
+        os.environ['PATH'] = f"/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:{current_path}"
+    
     tesseract_path = shutil.which('tesseract')
     if tesseract_path:
+        logger.info(f"Tesseract found in PATH: {tesseract_path}")
         return tesseract_path
     
-    # Strategy 4: Fallback to 'tesseract' (assumes it's in PATH)
-    return 'tesseract'
+    # Strategy 4: Try direct path check even if not in PATH
+    # Sometimes the file exists but isn't in PATH
+    test_path = '/usr/bin/tesseract'
+    if os.path.exists(test_path):
+        logger.warning(f"Tesseract exists at {test_path} but not in PATH, using it anyway")
+        return test_path
+    
+    # Last resort: return the string and let pytesseract try
+    logger.error("Tesseract not found in any location, falling back to 'tesseract'")
+    return '/usr/bin/tesseract'  # Return a path instead of just 'tesseract'
 
+# Initialize Tesseract path
 tesseract_cmd = find_tesseract()
 pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
 app = Flask(__name__)
 
 # Verify Tesseract is accessible after app creation
-try:
-    pytesseract.get_tesseract_version()
-    app.logger.info(f"Tesseract found at: {tesseract_cmd}")
-except Exception as e:
-    app.logger.error(f"Tesseract not accessible at {tesseract_cmd}: {str(e)}")
-    app.logger.error(f"PATH: {os.environ.get('PATH', 'Not set')}")
-    # Try to verify the file exists
-    if os.path.exists(tesseract_cmd):
-        app.logger.error(f"File exists but may not be executable: {tesseract_cmd}")
-    else:
-        app.logger.error(f"File does not exist: {tesseract_cmd}")
+def verify_tesseract():
+    """Verify Tesseract is accessible and log diagnostics"""
+    try:
+        version = pytesseract.get_tesseract_version()
+        app.logger.info(f"✓ Tesseract found at: {tesseract_cmd}, version: {version}")
+        return True
+    except pytesseract.TesseractNotFoundError as e:
+        app.logger.error(f"✗ Tesseract not found at {tesseract_cmd}")
+        app.logger.error(f"  Error: {str(e)}")
+        app.logger.error(f"  PATH: {os.environ.get('PATH', 'Not set')}")
+        app.logger.error(f"  TESSERACT_CMD: {os.environ.get('TESSERACT_CMD', 'Not set')}")
+        
+        # Try to find where tesseract might be
+        import subprocess
+        try:
+            result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                found_path = result.stdout.strip()
+                app.logger.error(f"  'which tesseract' found: {found_path}")
+                if found_path and found_path != tesseract_cmd:
+                    app.logger.warning(f"  Attempting to use {found_path}")
+                    pytesseract.pytesseract.tesseract_cmd = found_path
+                    try:
+                        version = pytesseract.get_tesseract_version()
+                        app.logger.info(f"✓ Successfully switched to: {found_path}, version: {version}")
+                        return True
+                    except:
+                        pass
+        except:
+            pass
+        
+        # Check if file exists
+        if os.path.exists(tesseract_cmd):
+            app.logger.error(f"  File exists at {tesseract_cmd} but may not be executable")
+            import stat
+            file_stat = os.stat(tesseract_cmd)
+            app.logger.error(f"  File permissions: {oct(file_stat.st_mode)}")
+        else:
+            app.logger.error(f"  File does not exist: {tesseract_cmd}")
+        
+        return False
+    except Exception as e:
+        app.logger.error(f"✗ Unexpected error verifying Tesseract: {str(e)}")
+        return False
+
+# Verify on startup
+verify_tesseract()
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB max file size
 
@@ -244,9 +303,16 @@ def index():
 @app.route('/health')
 def health_check():
     """Health check endpoint for load balancers and monitoring"""
+    # Try to re-verify Tesseract if not available
+    if not is_tesseract_available():
+        app.logger.warning("Tesseract not available, attempting to re-detect...")
+        verify_tesseract()
+    
     return jsonify({
         'status': 'healthy',
-        'tesseract': 'available' if is_tesseract_available() else 'unavailable'
+        'tesseract': 'available' if is_tesseract_available() else 'unavailable',
+        'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
+        'path': os.environ.get('PATH', 'Not set')
     }), 200
 
 def is_tesseract_available():

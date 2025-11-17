@@ -24,10 +24,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /usr/share/tesseract-ocr/4.00/tessdata/ \
     && ln -s /usr/share/tesseract-ocr/tessdata /usr/share/tesseract-ocr/4.00/tessdata \
-    && which tesseract \
+    && echo "Verifying Tesseract installation..." \
+    && ls -la /usr/bin/tesseract* || echo "Warning: No tesseract in /usr/bin" \
+    && which tesseract || echo "Warning: tesseract not in PATH" \
+    && find /usr -name tesseract -type f 2>/dev/null | head -5 || echo "Warning: tesseract not found in /usr" \
     && tesseract --version \
     && tesseract --list-langs \
-    && echo "Tesseract installation verified successfully"
+    && echo "Tesseract installation verified successfully" \
+    && echo "Creating symlinks to ensure accessibility..." \
+    && (ln -sf $(which tesseract) /usr/local/bin/tesseract 2>/dev/null || true) \
+    && (ln -sf $(which tesseract) /usr/bin/tesseract 2>/dev/null || true) \
+    && echo "Final verification..." \
+    && /usr/bin/tesseract --version || $(which tesseract) --version
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .

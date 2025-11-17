@@ -26,8 +26,25 @@ if [ -f "$TESSERACT_CMD" ]; then
     $TESSERACT_CMD --list-langs || echo "Warning: Tesseract found but language list failed"
 else
     echo "Warning: Tesseract not found at $TESSERACT_CMD, trying to find in PATH..."
-    which tesseract || echo "Error: Tesseract not found in PATH"
-    tesseract --version || echo "Error: Tesseract version check failed"
+    
+    # Try to find tesseract
+    TESSERACT_FOUND=$(which tesseract 2>/dev/null || find /usr -name tesseract -type f 2>/dev/null | head -1)
+    
+    if [ -n "$TESSERACT_FOUND" ] && [ -f "$TESSERACT_FOUND" ]; then
+        echo "Found Tesseract at: $TESSERACT_FOUND"
+        export TESSERACT_CMD="$TESSERACT_FOUND"
+        # Create symlink if needed
+        if [ ! -f "/usr/bin/tesseract" ]; then
+            echo "Creating symlink from $TESSERACT_FOUND to /usr/bin/tesseract"
+            ln -sf "$TESSERACT_FOUND" /usr/bin/tesseract 2>/dev/null || true
+        fi
+        $TESSERACT_FOUND --version || echo "Error: Tesseract version check failed"
+    else
+        echo "ERROR: Tesseract not found anywhere!"
+        echo "Searching for tesseract..."
+        find /usr -name "*tesseract*" -type f 2>/dev/null | head -10
+        echo "PATH contents: $PATH"
+    fi
 fi
 
 # Set Python path
