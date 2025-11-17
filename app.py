@@ -3,6 +3,7 @@ import sys
 import time
 import queue
 import logging
+import subprocess
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, render_template, request, jsonify, Response
@@ -16,6 +17,39 @@ import numpy as np
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Set Tesseract command from environment variable or use default
+tesseract_cmd = os.environ.get('TESSERACT_CMD', 'tesseract')
+pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
+# Set TESSDATA_PREFIX if not set
+if 'TESSDATA_PREFIX' not in os.environ:
+    os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata'
+
+# Verify Tesseract is accessible
+try:
+    tesseract_version = subprocess.check_output(
+        [tesseract_cmd, '--version'], 
+        stderr=subprocess.STDOUT
+    ).decode('utf-8')
+    logger.info(f"Tesseract version: {tesseract_version.strip()}")
+    logger.info(f"Using Tesseract at: {tesseract_cmd}")
+    logger.info(f"Using TESSDATA_PREFIX: {os.environ.get('TESSDATA_PREFIX')}")
+    
+    # Verify language data is available
+    try:
+        langs = subprocess.check_output(
+            [tesseract_cmd, '--list-langs'], 
+            stderr=subprocess.STDOUT
+        ).decode('utf-8')
+        logger.info(f"Available languages: {langs.strip().split('\n')[1:]}")
+    except Exception as e:
+        logger.warning(f"Could not list Tesseract languages: {str(e)}")
+        
+except Exception as e:
+    logger.error(f"Tesseract not found or not working: {str(e)}")
+    logger.error(f"TESSERACT_CMD: {tesseract_cmd}")
+    logger.error(f"PATH: {os.environ.get('PATH')}")
 
 # Set Tesseract command path - check multiple possible locations
 tesseract_paths = [

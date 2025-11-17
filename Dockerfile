@@ -7,23 +7,27 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     FLASK_APP=app.py \
     FLASK_ENV=production \
     PYTHONPATH=/app \
+    TESSERACT_CMD=/usr/bin/tesseract \
     TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata \
-    PATH="$PATH:/usr/local/bin/tesseract"
+    PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 # Set the working directory
 WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    tesseract-ocr-script-latn \
-    libleptonica-dev \
-    libtesseract-dev \
+    tesseract-ocr=4.1.1-* \
+    tesseract-ocr-eng=1:4.1.1-* \
+    tesseract-ocr-script-latn=1:4.1.1-* \
+    libleptonica-dev=1.79.0-* \
+    libtesseract-dev=4.1.1-* \
     gcc \
     python3-dev \
     libgl1-mesa-glx \
     libglib2.0-0 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/tesseract /usr/local/bin/tesseract \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
