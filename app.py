@@ -18,13 +18,43 @@ import numpy as np
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Set Tesseract command from environment variable or use default
-tesseract_cmd = os.environ.get('TESSERACT_CMD', 'tesseract')
-pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+# Set up Tesseract paths
+tesseract_paths = [
+    '/usr/bin/tesseract',
+    '/usr/local/bin/tesseract',
+    '/app/.apt/usr/bin/tesseract',
+    'tesseract'  # Last resort, will use PATH
+]
 
-# Set TESSDATA_PREFIX if not set
-if 'TESSDATA_PREFIX' not in os.environ:
-    os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata'
+# Try to find Tesseract
+found_tesseract = False
+for path in tesseract_paths:
+    if os.path.isfile(path) or shutil.which(path):
+        pytesseract.pytesseract.tesseract_cmd = path
+        found_tesseract = True
+        logger.info(f"Using Tesseract at: {path}")
+        break
+
+if not found_tesseract:
+    logger.warning("Tesseract not found in standard locations. Will try to use from PATH.")
+    pytesseract.pytesseract.tesseract_cmd = 'tesseract'
+
+# Set TESSDATA_PREFIX
+tessdata_paths = [
+    '/usr/share/tesseract-ocr/4.00/tessdata',
+    '/usr/share/tesseract-ocr/tessdata',
+    '/app/.apt/usr/share/tesseract-ocr/4.00/tessdata'
+]
+
+for path in tessdata_paths:
+    if os.path.isdir(path):
+        os.environ['TESSDATA_PREFIX'] = path
+        logger.info(f"Using TESSDATA_PREFIX: {path}")
+        break
+else:
+    logger.warning("TESSDATA_PREFIX not found in standard locations. Tesseract may not work correctly.")
+    if 'TESSDATA_PREFIX' not in os.environ:
+        os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata'
 
 # Verify Tesseract is accessible
 try:

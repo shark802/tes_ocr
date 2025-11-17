@@ -16,12 +16,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tesseract-ocr=4.1.1-* \
-    tesseract-ocr-eng=1:4.1.1-* \
-    tesseract-ocr-script-latn=1:4.1.1-* \
-    libleptonica-dev=1.79.0-* \
-    libtesseract-dev=4.1.1-* \
+RUN echo "deb http://deb.debian.org/debian buster main" >> /etc/apt/sources.list && \
+    echo "deb-src http://deb.debian.org/debian buster main" >> /etc/apt/sources.list && \
+    apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    tesseract-ocr-eng \
+    tesseract-ocr-all \
+    libleptonica-dev \
+    libtesseract-dev \
     gcc \
     python3-dev \
     libgl1-mesa-glx \
@@ -31,7 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/tesseract /usr/local/bin/tesseract
+    && ln -sf /usr/bin/tesseract /usr/local/bin/tesseract \
+    && tesseract --version \
+    && tesseract --list-langs
 
 # Verify Tesseract installation
 RUN tesseract --version && \
