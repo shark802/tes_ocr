@@ -7,9 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     FLASK_APP=app.py \
     FLASK_ENV=production \
     PYTHONPATH=/app \
-    TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata/ \
-    PATH="/usr/local/bin/tesseract:${PATH}" \
-    TESSERACT_VERSION=4.1.1
+    TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata \
+    PATH="$PATH:/usr/local/bin/tesseract"
 
 # Set the working directory
 WORKDIR /app
@@ -18,7 +17,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     tesseract-ocr-eng \
-    tesseract-ocr-all \
+    tesseract-ocr-script-latn \
     libleptonica-dev \
     libtesseract-dev \
     gcc \
@@ -26,11 +25,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
     libglib2.0-0 \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /usr/share/tesseract-ocr/4.00/tessdata/ \
-    && ln -s /usr/share/tesseract-ocr/tessdata /usr/share/tesseract-ocr/4.00/tessdata \
-    && tesseract --version \
-    && tesseract --list-langs
+    && rm -rf /var/lib/apt/lists/*
+
+# Verify Tesseract installation
+RUN tesseract --version && \
+    tesseract --list-langs
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
@@ -39,14 +38,19 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-    
 # Copy the rest of the application
 COPY . .
 
 # Create necessary directories and set permissions
-RUN mkdir -p static/uploads && \
-    chmod -R 755 static/ && \
-    chmod +x start.sh
+RUN mkdir -p /app/static/uploads && \
+    chmod -R 755 /app/static/ && \
+    chmod +x /app/start.sh
+
+# Expose the port the app runs on
+EXPOSE $PORT
+
+# Command to run the application
+CMD ["./start.sh"]
 
 # Expose the port the app runs on
 EXPOSE 10000
