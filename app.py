@@ -9,19 +9,49 @@ import cv2
 import numpy as np
 
 # Set Tesseract command path - works in Docker, Heroku, and local development
-tesseract_cmd = os.environ.get('TESSERACT_CMD', '/usr/bin/tesseract')
-# Check if the path exists, or try to find tesseract in PATH
-if not (os.path.exists(tesseract_cmd) and os.access(tesseract_cmd, os.X_OK)):
-    # Try to find tesseract in PATH
+def find_tesseract():
+    """Find Tesseract executable with multiple fallback strategies"""
+    # Strategy 1: Check environment variable
+    tesseract_cmd = os.environ.get('TESSERACT_CMD')
+    if tesseract_cmd and os.path.exists(tesseract_cmd) and os.access(tesseract_cmd, os.X_OK):
+        return tesseract_cmd
+    
+    # Strategy 2: Try common installation paths
+    common_paths = [
+        '/usr/bin/tesseract',
+        '/usr/local/bin/tesseract',
+        '/opt/homebrew/bin/tesseract',  # macOS Apple Silicon
+        '/usr/bin/tesseract-ocr',
+    ]
+    for path in common_paths:
+        if os.path.exists(path) and os.access(path, os.X_OK):
+            return path
+    
+    # Strategy 3: Try to find in PATH
     tesseract_path = shutil.which('tesseract')
     if tesseract_path:
-        tesseract_cmd = tesseract_path
-    else:
-        # Fallback to default (will work if tesseract is in PATH)
-        tesseract_cmd = 'tesseract'
+        return tesseract_path
+    
+    # Strategy 4: Fallback to 'tesseract' (assumes it's in PATH)
+    return 'tesseract'
+
+tesseract_cmd = find_tesseract()
 pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
 app = Flask(__name__)
+
+# Verify Tesseract is accessible after app creation
+try:
+    pytesseract.get_tesseract_version()
+    app.logger.info(f"Tesseract found at: {tesseract_cmd}")
+except Exception as e:
+    app.logger.error(f"Tesseract not accessible at {tesseract_cmd}: {str(e)}")
+    app.logger.error(f"PATH: {os.environ.get('PATH', 'Not set')}")
+    # Try to verify the file exists
+    if os.path.exists(tesseract_cmd):
+        app.logger.error(f"File exists but may not be executable: {tesseract_cmd}")
+    else:
+        app.logger.error(f"File does not exist: {tesseract_cmd}")
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024  # 200MB max file size
 
@@ -105,9 +135,29 @@ def verify_student():
         
         all_text = []
         for config in configs:
-            current_text = pytesseract.image_to_string(image, config=config)
-            if current_text.strip():
-                all_text.append(current_text.strip())
+            try:
+                current_text = pytesseract.image_to_string(image, config=config)
+                if current_text.strip():
+                    all_text.append(current_text.strip())
+            except pytesseract.TesseractNotFoundError:
+                app.logger.error(f"Tesseract not found. CMD: {pytesseract.pytesseract.tesseract_cmd}")
+                return jsonify({
+                    'success': False,
+                    'error': 'Tesseract OCR is not installed or not found in PATH. Please check the server configuration.',
+                    'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
+                    'path': os.environ.get('PATH', 'Not set')
+                }), 500
+            except pytesseract.TesseractError as e:
+                app.logger.error(f"Tesseract error: {str(e)}")
+                # Continue with other configs if one fails
+                continue
+        
+        if not all_text:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to extract text from image. Tesseract may not be properly configured.',
+                'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd
+            }), 500
         
         # Combine all extracted text
         full_text = ' '.join(all_text)
@@ -352,9 +402,27 @@ def upload_file():
         
         all_text = []
         for config in configs:
-            current_text = pytesseract.image_to_string(image, config=config)
-            if current_text.strip():
-                all_text.append(current_text.strip())
+            try:
+                current_text = pytesseract.image_to_string(image, config=config)
+                if current_text.strip():
+                    all_text.append(current_text.strip())
+            except pytesseract.TesseractNotFoundError:
+                app.logger.error(f"Tesseract not found. CMD: {pytesseract.pytesseract.tesseract_cmd}")
+                return jsonify({
+                    'error': 'Tesseract OCR is not installed or not found in PATH. Please check the server configuration.',
+                    'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd,
+                    'path': os.environ.get('PATH', 'Not set')
+                }), 500
+            except pytesseract.TesseractError as e:
+                app.logger.error(f"Tesseract error: {str(e)}")
+                # Continue with other configs if one fails
+                continue
+        
+        if not all_text:
+            return jsonify({
+                'error': 'Failed to extract text from image. Tesseract may not be properly configured.',
+                'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd
+            }), 500
         
         # Combine all extracted text and remove duplicate lines
         unique_lines = []
@@ -384,7 +452,11 @@ def upload_file():
         })
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        app.logger.error(f"Error processing upload: {str(e)}", exc_info=True)
+        return jsonify({
+            'error': f'Error processing request: {str(e)}',
+            'tesseract_cmd': pytesseract.pytesseract.tesseract_cmd
+        }), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))

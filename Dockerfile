@@ -7,8 +7,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     FLASK_APP=app.py \
     FLASK_ENV=production \
     PYTHONPATH=/app \
+    TESSERACT_CMD=/usr/bin/tesseract \
     TESSDATA_PREFIX=/usr/share/tesseract-ocr/4.00/tessdata/ \
-    PATH="$PATH:/usr/bin/tesseract"
+    PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 # Set the working directory
 WORKDIR /app
@@ -23,7 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /usr/share/tesseract-ocr/4.00/tessdata/ \
     && ln -s /usr/share/tesseract-ocr/tessdata /usr/share/tesseract-ocr/4.00/tessdata \
-    && tesseract --list-langs
+    && which tesseract \
+    && tesseract --version \
+    && tesseract --list-langs \
+    && echo "Tesseract installation verified successfully"
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .

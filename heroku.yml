@@ -1,6 +1,9 @@
 build:
   docker:
     web: Dockerfile
+  config:
+    TESSERACT_CMD: /usr/bin/tesseract
+    TESSDATA_PREFIX: /usr/share/tesseract-ocr/4.00/tessdata/
 run:
   web: ./start.sh
 
