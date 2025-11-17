@@ -146,7 +146,8 @@ Watch the build logs to ensure Tesseract is being installed:
 
 ```bash
 # Watch build logs in real-time
-heroku logs --tail --app tesocr
+
+
 ```
 
 **Look for these messages:**

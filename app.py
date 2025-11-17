@@ -277,13 +277,24 @@ def clean_date_string(date_str):
     cleaned = re.sub(r'[^a-z0-9]', '', date_str.lower())
     
     # Handle month names (convert to numbers if needed)
+    # Include full month names, 3-letter abbreviations, and other common variations
+    # Order matters: check longer names first to avoid partial matches
     month_map = {
-        'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04', 'may': '05', 'jun': '06',
-        'jul': '07', 'aug': '08', 'sep': '09', 'oct': '10', 'nov': '11', 'dec': '12'
+        # Full month names
+        'january': '01', 'february': '02', 'march': '03', 'april': '04', 
+        'may': '05', 'june': '06', 'july': '07', 'august': '08',
+        'september': '09', 'october': '10', 'november': '11', 'december': '12',
+        # 3-letter abbreviations
+        'jan': '01', 'feb': '02', 'mar': '03', 'apr': '04',
+        'jun': '06', 'jul': '07', 'aug': '08', 'sep': '09',
+        'oct': '10', 'nov': '11', 'dec': '12',
+        # Other common variations (keep for backward compatibility)
+        'june': '06', 'july': '07'
     }
     
     # Check for month names and convert to numbers
-    for month, num in month_map.items():
+    # Sort by length (longest first) to match full names before abbreviations
+    for month, num in sorted(month_map.items(), key=lambda x: len(x[0]), reverse=True):
         if month in cleaned:
             cleaned = cleaned.replace(month, num)
             break
