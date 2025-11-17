@@ -10,75 +10,87 @@ import numpy as np
 
 # Set Tesseract command path - works in Docker, Heroku, and local development
 def find_tesseract():
-    """Find Tesseract executable with multiple fallback strategies"""
+    """Find Tesseract executable - use wherever it's actually installed"""
     import logging
+    import subprocess
     logger = logging.getLogger(__name__)
     
     # Strategy 1: Check environment variable
     tesseract_cmd = os.environ.get('TESSERACT_CMD')
-    if tesseract_cmd:
-        if os.path.exists(tesseract_cmd) and os.access(tesseract_cmd, os.X_OK):
-            logger.info(f"Tesseract found via TESSERACT_CMD: {tesseract_cmd}")
-            return tesseract_cmd
-        else:
-            logger.warning(f"TESSERACT_CMD set to {tesseract_cmd} but file not accessible")
+    if tesseract_cmd and os.path.exists(tesseract_cmd) and os.access(tesseract_cmd, os.X_OK):
+        logger.info(f"Tesseract found via TESSERACT_CMD: {tesseract_cmd}")
+        return tesseract_cmd
     
-    # Strategy 2: Try app directory first (for Heroku buildpack installations)
-    app_paths = [
-        '/app/bin/tesseract',
-        '/app/tesseract',
-    ]
-    for path in app_paths:
-        if os.path.exists(path) and os.access(path, os.X_OK):
-            logger.info(f"Tesseract found at app path: {path}")
-            return path
+    # Strategy 2: Use 'which' command to find where it's actually installed
+    try:
+        result = subprocess.run(['which', 'tesseract'], capture_output=True, text=True, timeout=2)
+        if result.returncode == 0:
+            found_path = result.stdout.strip()
+            if found_path and os.path.exists(found_path):
+                logger.info(f"Tesseract found via 'which': {found_path}")
+                return found_path
+    except Exception as e:
+        logger.debug(f"'which' command failed: {e}")
     
-    # Strategy 3: Try common system installation paths
+    # Strategy 3: Use shutil.which (Python's built-in)
+    tesseract_path = shutil.which('tesseract')
+    if tesseract_path and os.path.exists(tesseract_path):
+        logger.info(f"Tesseract found via shutil.which: {tesseract_path}")
+        return tesseract_path
+    
+    # Strategy 4: Try common installation paths
     common_paths = [
         '/usr/bin/tesseract',
         '/usr/local/bin/tesseract',
+        '/app/bin/tesseract',
         '/opt/homebrew/bin/tesseract',  # macOS Apple Silicon
         '/usr/bin/tesseract-ocr',
     ]
     for path in common_paths:
         if os.path.exists(path) and os.access(path, os.X_OK):
-            logger.info(f"Tesseract found at common path: {path}")
+            logger.info(f"Tesseract found at: {path}")
             return path
     
-    # Strategy 4: Try to find in PATH
-    # First, ensure PATH includes app/bin and common locations
-    current_path = os.environ.get('PATH', '')
-    if '/app/bin' not in current_path:
-        os.environ['PATH'] = f"/app/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:{current_path}"
+    # Strategy 5: Search filesystem for tesseract executable
+    try:
+        result = subprocess.run(['find', '/usr', '/app', '-name', 'tesseract', '-type', 'f', '-executable'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            found_path = result.stdout.strip().split('\n')[0]
+            if found_path and os.path.exists(found_path):
+                logger.info(f"Tesseract found via find: {found_path}")
+                return found_path
+    except Exception as e:
+        logger.debug(f"'find' command failed: {e}")
     
-    tesseract_path = shutil.which('tesseract')
-    if tesseract_path:
-        logger.info(f"Tesseract found in PATH: {tesseract_path}")
-        return tesseract_path
-    
-    # Strategy 5: Try direct path check even if not in PATH
-    # Check app directory first
-    test_paths = ['/app/bin/tesseract', '/usr/bin/tesseract']
-    for test_path in test_paths:
-        if os.path.exists(test_path):
-            logger.warning(f"Tesseract exists at {test_path} but not in PATH, using it anyway")
-            return test_path
-    
-    # Last resort: return app/bin path (will be created during build)
-    logger.error("Tesseract not found in any location, falling back to /app/bin/tesseract")
-    return '/app/bin/tesseract'
+    # Last resort: return None and let pytesseract handle it
+    logger.error("Tesseract not found in any location")
+    return None
 
-# Initialize Tesseract path
+# Initialize Tesseract path - find it dynamically
 tesseract_cmd = find_tesseract()
-pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+if tesseract_cmd:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+else:
+    # Let pytesseract try to find it (will use 'tesseract' command)
+    pytesseract.pytesseract.tesseract_cmd = 'tesseract'
 
 app = Flask(__name__)
 
-# Set TESSDATA_PREFIX to app directory if it exists
-if os.path.exists('/app/share/tesseract-ocr/tessdata'):
-    os.environ['TESSDATA_PREFIX'] = '/app/share/tesseract-ocr/tessdata'
-elif not os.environ.get('TESSDATA_PREFIX'):
-    os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata/'
+# Set TESSDATA_PREFIX - find it dynamically
+if not os.environ.get('TESSDATA_PREFIX'):
+    # Try common locations
+    tessdata_paths = [
+        '/usr/share/tesseract-ocr/tessdata',
+        '/usr/share/tesseract-ocr/4.00/tessdata',
+        '/app/share/tesseract-ocr/tessdata',
+    ]
+    for path in tessdata_paths:
+        if os.path.exists(path):
+            os.environ['TESSDATA_PREFIX'] = path
+            break
+    else:
+        os.environ['TESSDATA_PREFIX'] = '/usr/share/tesseract-ocr/4.00/tessdata/'
 
 # Verify Tesseract is accessible after app creation
 def verify_tesseract():
