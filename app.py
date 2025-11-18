@@ -473,59 +473,9 @@ def verify_student():
         # birthday_found = clean_birthday and clean_birthday in clean_extracted_date
         student_id_found = clean_student_id and clean_student_id in clean_extracted.replace(' ', '')
         
-        # Find where the data was found (for debugging)
-        def find_match_position(needle, haystack, is_date=False):
-            """Find the position of needle in haystack, handling different formats"""
-            if not needle:
-                return None
-                
-            # Try exact match first
-            needle_lower = needle.lower()
-            haystack_lower = haystack.lower()
-            
-            # For dates, try multiple formats
-            if is_date:
-                # Try with different separators
-                formats_to_try = [
-                    needle_lower,
-                    needle_lower.replace(' ', ''),
-                    needle_lower.replace(',', ''),
-                    needle_lower.replace(' ', '').replace(',', '')
-                ]
-                for fmt in formats_to_try:
-                    pos = haystack_lower.find(fmt)
-                    if pos != -1:
-                        return f"...{haystack[max(0, pos-10):min(len(haystack), pos+len(fmt)+10)]}..."
-            else:
-                pos = haystack_lower.find(needle_lower)
-                if pos != -1:
-                    return f"...{haystack[max(0, pos-10):min(len(haystack), pos+len(needle)+10)]}..."
-            return None
-        
         return jsonify({
             'success': True,
-            'verified': all([last_name_found, student_id_found]),
-            'verification': {
-                'last_name': {
-                    'provided': last_name,
-                    'verified': last_name_found,
-                    'found_in': find_match_position(last_name, full_text)
-                },
-                # 'birthday': {
-                #     'provided': birthday,
-                #     'verified': birthday_found,
-                #     'found_in': find_match_position(birthday, full_text, is_date=True),
-                #     'normalized': clean_birthday,
-                #     'found_normalized': clean_extracted_date
-                # },
-                'student_id': {
-                    'provided': student_id,
-                    'verified': student_id_found,
-                    'found_in': find_match_position(student_id, full_text)
-                }
-            },
-            'extracted_text': full_text,  # For debugging
-            'cleaned_extracted_text': clean_extracted  # For debugging
+            'verified': all([last_name_found, student_id_found])
         })
 
     except Exception as e:
