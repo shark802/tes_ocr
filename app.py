@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 import pytesseract
 from PIL import Image, ImageEnhance, ImageFilter
+from io import BytesIO
 import re
 import cv2
 import numpy as np
@@ -269,6 +270,31 @@ ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def is_valid_image_file(file):
+    """Check if the uploaded file is valid and doesn't contain null bytes"""
+    try:
+        file_content = file.read()
+        file.seek(0)
+        
+        if b'\x00' in file_content:
+            return False, "Image file contains null bytes (corrupted file)"
+        
+        if len(file_content) == 0:
+            return False, "Image file is empty"
+        
+        if len(file_content) > 10 * 1024 * 1024:
+            return False, "Image file is too large (max 10MB)"
+        
+        try:
+            img = Image.open(BytesIO(file_content))
+            img.verify()
+            file.seek(0)
+            return True, "Valid image"
+        except Exception as e:
+            return False, f"Invalid image file: {str(e)}"
+    except Exception as e:
+        return False, f"Error reading file: {str(e)}"
 def clean_date_string(date_str):
     """
     Clean and normalize date string for comparison.
@@ -389,6 +415,15 @@ def verify_student():
 
     if file.filename == '':
         return jsonify({'success': False, 'error': 'No selected file'}), 400
+
+    # Validate the image file before processing
+    is_valid, error_msg = is_valid_image_file(file)
+    if not is_valid:
+        app.logger.error(f"Invalid image file: {error_msg}")
+        return jsonify({
+            'success': False,
+            'error': f'Invalid image file: {error_msg}'
+        }), 400
 
     try:
         # Process the image and extract text
